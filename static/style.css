@@ -185,7 +185,6 @@ input:focus-visible, button:focus-visible, a:focus-visible { outline: 3px solid 
 .callout[hidden] { display: none; }
 .callout strong { display: block; font-size: 22px; font-weight: 800; margin-bottom: 2px; }
 .callout span { font-family: var(--body); font-size: 15px; font-weight: 500; color: var(--dim); }
-.callout.open { border-color: #15803d; background: #ecfdf3; }
 .callout.locked { border-color: var(--red); }
 
 .tabs { display: inline-flex; gap: 8px; }
@@ -237,7 +236,6 @@ input:focus-visible, button:focus-visible, a:focus-visible { outline: 3px solid 
 }
 .item:hover { transform: translateX(3px); }
 .item.hit { border-width: 3px; border-color: var(--red); box-shadow: 3px 3px 0 0 var(--red); }
-.item.open .pos { background: var(--green); color: #fff; }
 .item.locked { background: #f6efe4; }
 .item.locked .thumb { filter: grayscale(0.4); }
 
@@ -294,7 +292,6 @@ input:focus-visible, button:focus-visible, a:focus-visible { outline: 3px solid 
   white-space: nowrap;
 }
 .chip.tier { background: #dbeafe; }
-.chip.open { background: var(--green); color: #fff; }
 .chip.resub { background: #ffedd5; }
 .chip.peak { background: #fef3c7; }
 

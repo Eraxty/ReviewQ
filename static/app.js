@@ -66,7 +66,6 @@ function itemEl(row, pos, { hit = false, gated = false } = {}) {
     el("span", {}, `#${row.id}`),
     TIERS[row.level] ? el("span", { class: "chip tier" }, TIERS[row.level]) : null,
     el("span", { class: "chip" }, TYPES[row.project_type] || row.project_type || "-"),
-    open ? el("span", { class: "chip open" }, "Open for review") : null,
     row.wait_exact ? null : el("span", { class: "chip resub", title: "Shipped again after \"needs changes\" or after being unshipped" }, "Resubmitted"),
     row.is_peak ? el("span", { class: "chip peak" }, "Beacon pick") : null,
     el("span", {}, row.owner_name ? `@${row.owner_name}` : ""),
