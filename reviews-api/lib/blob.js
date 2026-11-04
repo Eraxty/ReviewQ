@@ -12,6 +12,7 @@ export const blobStorage = {
   async read({ maxAgeMs = 0 } = {}) {
     if (cache && Date.now() - cache.at < maxAgeMs) return cache;
     const res = await get(PATH, { access: "private", useCache: false, ifNoneMatch: cache?.etag });
+    console.log("DEBUG blob read", res ? res.statusCode : 404, JSON.stringify(res?.blob?.etag), "cached", JSON.stringify(cache?.etag));
     if (!res) return null;
     if (res.statusCode === 304) {
       cache = { ...cache, at: Date.now() };
@@ -34,6 +35,7 @@ export const blobStorage = {
       });
       cache = { data, etag: result.etag, at: Date.now() };
     } catch (e) {
+      console.log("DEBUG blob write failed", e?.name, e?.message, "etag", JSON.stringify(etag));
       if (e instanceof BlobPreconditionFailedError || /already exists/i.test(e?.message || "")) {
         cache = null;
         throw new Conflict();

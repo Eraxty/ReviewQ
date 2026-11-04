@@ -145,7 +145,7 @@ export function ban(db, author) {
 }
 
 // Read, change, write back only if nobody else wrote in between.
-export async function update(storage, change, attempts = 10) {
+export async function update(storage, change, attempts = 20) {
   for (let i = 0; i < attempts; i++) {
     const current = await storage.read();
     const db = current?.data || emptyDb();
@@ -155,7 +155,11 @@ export async function update(storage, change, attempts = 10) {
       return next;
     } catch (e) {
       if (!(e instanceof Conflict)) throw e;
-      await new Promise((r) => setTimeout(r, 40 * (i + 1) + Math.random() * 60));
+      // A shared Blob is a compare-and-swap document. Under a burst, linear
+      // retries make every contender collide again in lockstep. Back off with
+      // jitter so writers spread out, while allowing a short burst to settle.
+      const ceiling = Math.min(250, 25 * 2 ** i);
+      await new Promise((r) => setTimeout(r, Math.random() * ceiling));
     }
   }
   throw new HttpError(503, "Too many people posting at once. Try again.");
