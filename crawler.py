@@ -22,6 +22,7 @@ from pathlib import Path
 from queue_rules import FINAL_CHECKS, WAITING, normalize, queue_of, wait_start
 
 API = "https://server.pixl.hackclub.com/api/explore/projects"
+PLAYERS_API = "https://server.pixl.hackclub.com/api/explore/players"
 USER_AGENT = "pixl-queue/1.0 (public review queue viewer)"
 DB_PATH = Path(__file__).parent / "data" / "pixl.db"
 
@@ -41,6 +42,7 @@ RECHECK_SECONDS = {
     None: 6 * 60 * MIN,  # 404: deleted, archived, rejected, banned or never existed
 }
 DEFAULT_RECHECK = 30 * MIN
+PLAYER_RECHECK_SECONDS = 6 * 60 * MIN
 # Lower runs first, so queue changes show up before the long tail of drafts.
 PRIORITY = {WAITING: 0, **{s: 0 for s in FINAL_CHECKS}, "needs_changes": 1}
 
@@ -83,6 +85,12 @@ create table if not exists meta (key text primary key, value text);
 create table if not exists details (
   id integer primary key,
   json text not null
+);
+-- Public profiles (level, approved hours, approved projects) of queued makers.
+create table if not exists players (
+  id text primary key,
+  json text not null,
+  fetched_at real not null
 );
 """
 
@@ -166,8 +174,9 @@ def public_details(data: dict) -> dict:
     return {
         "project": pick(
             p,
-            ("id", "name", "description", "project_type", "level", "status", "image_url", "repo_url",
-             "demo_url", "created_at", "shipped_at", "hackatime_seconds", "is_peak", "approved_hours"),
+            ("id", "user_id", "name", "description", "project_type", "level", "status", "image_url",
+             "repo_url", "demo_url", "created_at", "shipped_at", "hackatime_seconds", "is_peak",
+             "approved_hours"),
         ),
         "owner": pick(owner, ("display_name", "avatar_url")),
         "entries": [pick(e, ("id", "title", "content", "hours", "created_at", "edited_at")) for e in data.get("entries") or []],
@@ -237,6 +246,35 @@ def save_project(conn: sqlite3.Connection, data: dict) -> str:
     return status
 
 
+def public_player(data: dict) -> dict:
+    """The parts of a maker's public profile the review page shows."""
+    player = data.get("player") or {}
+    return {
+        **{k: player.get(k) for k in ("display_name", "created_at", "pixels", "xp_hours", "re", "level")},
+        "approved": [
+            {k: p.get(k) for k in ("id", "name", "project_type", "level", "hackatime_seconds", "approved_hours", "shipped_at")}
+            for p in data.get("projects") or []
+        ],
+    }
+
+
+def refresh_player(user_id: str) -> None:
+    """Fetch a queued maker's public profile unless it's recent."""
+    with connect() as conn:
+        row = conn.execute("select fetched_at from players where id = ?", (user_id,)).fetchone()
+    if row and time.time() - row["fetched_at"] < PLAYER_RECHECK_SECONDS:
+        return
+    data = get_json(f"{PLAYERS_API}/{user_id}/public")
+    with connect() as conn:
+        if data and data.get("ok"):
+            conn.execute(
+                "insert or replace into players (id, json, fetched_at) values (?, ?, ?)",
+                (user_id, json.dumps(public_player(data), separators=(",", ":")), time.time()),
+            )
+        else:
+            conn.execute("delete from players where id = ?", (user_id,))
+
+
 def probe(pid: int) -> str | None:
     data = get_json(f"{API}/{pid}")
     with connect() as conn:
@@ -252,6 +290,9 @@ def probe(pid: int) -> str | None:
             "insert or replace into probes (id, status, checked_at) values (?,?,?)",
             (pid, status, time.time()),
         )
+    user_id = ((data or {}).get("project") or {}).get("user_id")
+    if status in QUEUED and isinstance(user_id, str) and len(user_id) == 36:
+        refresh_player(user_id)
     return status
 
 
@@ -355,6 +396,18 @@ def start_background(log=print) -> threading.Thread:
     t = threading.Thread(target=run_forever, args=(log,), daemon=True, name="crawler")
     t.start()
     return t
+
+
+def page_details(conn: sqlite3.Connection, pid: int) -> str | None:
+    """A queued project's details plus its maker's public profile, as JSON."""
+    row = conn.execute("select json from details where id = ?", (pid,)).fetchone()
+    if row is None:
+        return None
+    details = json.loads(row["json"])
+    user_id = details["project"].get("user_id")
+    player = conn.execute("select json from players where id = ?", (user_id,)).fetchone() if user_id else None
+    details["maker"] = json.loads(player["json"]) if player else None
+    return json.dumps(details, separators=(",", ":"))
 
 
 def checkpoint() -> None:

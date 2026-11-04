@@ -30,10 +30,10 @@ def queue():
 @app.get("/p/<int:pid>.json")
 def project_details(pid: int):
     with crawler.connect() as conn:
-        row = conn.execute("select json from details where id = ?", (pid,)).fetchone()
-    if row is None:
+        body = crawler.page_details(conn, pid)
+    if body is None:
         abort(404)
-    return Response(row["json"], mimetype="application/json")
+    return Response(body, mimetype="application/json")
 
 
 crawler.init_db()

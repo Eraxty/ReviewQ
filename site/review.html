@@ -4,180 +4,166 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Review · Pixl queue</title>
-  <meta name="description" content="Everything public about a project in Pixl's review queue, plus community reviews reviewers can copy.">
-  <meta name="theme-color" content="#ec3750">
+  <meta name="description" content="A public copy of Pixl's review dash for one project in the queue, with community reviews reviewers can copy.">
+  <meta name="theme-color" content="#131418">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <script>
-    // Set the theme before first paint so dark mode never flashes light.
+    // The dash is dark by default; light only when chosen or asked for by the OS.
     (function () {
       var saved = null;
       try { saved = localStorage.getItem("pq-theme"); } catch (e) {}
-      var dark = saved ? saved === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
+      var dark = saved ? saved === "dark" : !window.matchMedia("(prefers-color-scheme: light)").matches;
       document.documentElement.dataset.theme = dark ? "dark" : "light";
     })();
   </script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;700;800&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="dash/dash.css">
+  <link rel="stylesheet" href="dash/review.css">
   <script type="module" src="review.js"></script>
 </head>
 <body>
-  <div class="bg" aria-hidden="true"><div class="bg-pattern"></div></div>
-
-  <div class="content">
-    <header class="head">
-      <a class="wordmark" href="./" title="Back to the queue"><span class="word">PIXL</span><span class="word accent">QUEUE</span></a>
-      <div class="head-right">
-        <a class="btn red" href="https://github.com/Eraxty" target="_blank" rel="noopener">
-          <svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
-          Made by Eraxty
+  <div class="admin-shell">
+    <header class="hc-topbar rq-topbar">
+      <div class="rq-topbar-inner">
+        <a class="rq-brand" href="./" title="Back to the queue">
+          <img src="favicon.svg" alt="" width="26" height="26">
+          <span><b>Pixl</b> Queue</span>
         </a>
-        <div class="account" id="account" hidden></div>
-        <button type="button" class="btn icon theme-toggle" id="theme" aria-label="Switch to dark mode">
-          <svg class="moon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M21 14.5A9 9 0 0 1 9.5 3a.75.75 0 0 0-.98-.9A10.5 10.5 0 1 0 21.9 15.48a.75.75 0 0 0-.9-.98z"/></svg>
-          <svg class="sun" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="12" cy="12" r="5" fill="currentColor"/><g stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 1.5v2.5M12 20v2.5M1.5 12H4M20 12h2.5M4.6 4.6l1.8 1.8M17.6 17.6l1.8 1.8M4.6 19.4l1.8-1.8M17.6 6.4l1.8-1.8"/></g></svg>
-        </button>
+        <nav class="rq-nav" aria-label="Pages">
+          <a class="hc-nav-link" href="./">Queue</a>
+          <a class="hc-nav-link" data-active href="" aria-current="page">Review</a>
+        </nav>
+        <div class="rq-top-right">
+          <span class="hc-badge" data-tone="warning" title="Not Pixl's dash. Nothing here is sent to Pixl.">Unofficial</span>
+          <a class="hc-btn hc-btn-ghost hc-btn-sm" href="https://github.com/Eraxty" target="_blank" rel="noopener">
+            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+            Made by Eraxty
+          </a>
+          <button type="button" class="hc-btn hc-btn-ghost hc-btn-sm rq-icon-btn" id="theme" aria-label="Switch theme">
+            <svg class="moon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M21 14.5A9 9 0 0 1 9.5 3a.75.75 0 0 0-.98-.9A10.5 10.5 0 1 0 21.9 15.48a.75.75 0 0 0-.9-.98z"/></svg>
+            <svg class="sun" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="12" cy="12" r="5" fill="currentColor"/><g stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 1.5v2.5M12 20v2.5M1.5 12H4M20 12h2.5M4.6 4.6l1.8 1.8M17.6 17.6l1.8 1.8M4.6 19.4l1.8-1.8M17.6 6.4l1.8-1.8"/></g></svg>
+          </button>
+        </div>
       </div>
     </header>
 
-    <main class="page wide">
-      <a class="back" href="./"><span aria-hidden="true">&larr;</span> Back to the queue</a>
-
-      <p class="banner" id="banner" role="status" hidden></p>
-
-      <section class="card project" id="project" aria-busy="true">
-        <div class="skel tall"></div>
-      </section>
-
-      <div class="workspace" id="workspace" hidden>
-        <section class="card community" id="community">
-          <div class="card-head">
-            <h2 class="card-title">Community reviews <span class="count" id="rv-count"></span></h2>
-          </div>
-          <p class="note">
-            <svg class="lock" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 2h11A1.5 1.5 0 0 1 15 3.5v7a1.5 1.5 0 0 1-1.5 1.5H8l-3.6 2.7a.5.5 0 0 1-.8-.4V12H2.5A1.5 1.5 0 0 1 1 10.5v-7A1.5 1.5 0 0 1 2.5 2z"/></svg>
-            <span>Written by people outside Pixl's review team, so they're <strong>unofficial</strong>. Reviewers: copy what
-            checks out, then double check it yourself in the real dash.</span>
-          </p>
-          <div class="rv-list" id="rv-list"><div class="skel"></div></div>
-        </section>
-
-        <section class="card work" id="work">
-          <div class="card-head">
-            <h2 class="card-title">Check the work</h2>
-            <div class="tabs" role="tablist" aria-label="Project details" id="work-tabs">
-              <button type="button" class="btn" role="tab" data-tab="readme" aria-selected="true">README</button>
-              <button type="button" class="btn" role="tab" data-tab="commits" aria-selected="false">Commits</button>
-              <button type="button" class="btn" role="tab" data-tab="journals" aria-selected="false">Journals <span class="count" id="c-journals"></span></button>
-              <button type="button" class="btn" role="tab" data-tab="past" aria-selected="false">Past reviews <span class="count" id="c-past"></span></button>
-            </div>
-          </div>
-          <div class="work-panel" id="work-panel" role="tabpanel"></div>
-        </section>
-
-        <aside class="card mine" id="mine" aria-labelledby="mine-title">
-          <div class="card-head">
-            <h2 class="card-title" id="mine-title">Your review</h2>
-            <span class="save-status" id="save-status" role="status"></span>
-          </div>
-
-          <form id="form" novalidate autocomplete="off">
-            <fieldset class="seg">
-              <legend class="label">Verdict</legend>
-              <label><input type="radio" name="verdict" value="approved"><span class="btn">Approve</span></label>
-              <label><input type="radio" name="verdict" value="needs_changes"><span class="btn">Request changes</span></label>
-              <label><input type="radio" name="verdict" value="ban"><span class="btn">Perm reject</span></label>
-            </fieldset>
-
-            <div class="field">
-              <label class="label" for="tier">Tier</label>
-              <select id="tier">
-                <option value="1">T1 Spark</option>
-                <option value="2">T2 Signal</option>
-                <option value="3">T3 Grid</option>
-                <option value="4">T4 Nexus</option>
-              </select>
-              <p class="hint" id="tier-blurb"></p>
-            </div>
-
-            <div class="field">
-              <div class="label-row">
-                <label class="label" for="hours">Hours to credit</label>
-                <span class="hint" id="hours-of"></span>
-              </div>
-              <div class="hours-row">
-                <input type="range" id="hours-range" min="0" step="0.1" aria-label="Hours to credit">
-                <input type="number" id="hours" min="0" step="0.1" inputmode="decimal">
-              </div>
-              <p class="deflate" id="deflate"></p>
-            </div>
-
-            <p class="eyebrow">Audit notes · internal, never shown to the player</p>
-
-            <div class="field" data-field="technical_features">
-              <div class="label-row">
-                <label class="label" for="technical_features">Technical features</label>
-                <span class="counter" id="tf-count">0/20</span>
-              </div>
-              <textarea id="technical_features" rows="5" maxlength="6000" placeholder="What the project is and does, in specific technical terms (&quot;OAuth app&quot;, not generic words). Then the README (clear? says how to run it and how it was made?) and the demo (how is it hosted?)."></textarea>
-            </div>
-
-            <div class="field" data-field="deflation_reason" id="deflation-field" hidden>
-              <div class="label-row">
-                <label class="label" for="deflation_reason" id="deflation-label">Why lower the hours?</label>
-              </div>
-              <textarea id="deflation_reason" rows="3" maxlength="4000" placeholder="What made you deflate (suspected AI use, few commits, no journals) and how much you took off."></textarea>
-            </div>
-
-            <div class="field" data-field="notes">
-              <div class="label-row">
-                <label class="label" for="notes">Additional notes</label>
-              </div>
-              <textarea id="notes" rows="4" maxlength="6000" placeholder="Required for approval. Their level (repo count), why you didn't deflate (commits that show steady progress, journals) and any other proof for the time."></textarea>
-            </div>
-
-            <p class="eyebrow">Verdict note</p>
-
-            <div class="field" data-field="note">
-              <div class="label-row">
-                <label class="label" for="note">Note to the player</label>
-              </div>
-              <textarea id="note" rows="4" maxlength="4000" placeholder="Be nice and personal, show their work is good. Finish with a short motivation like &quot;Keep it up!&quot;."></textarea>
-              <p class="hint">Macros: <code>/ai</code> excessive AI, <code>/fraud</code> fraud ban, <code>/readmeai</code> AI README, <code>/badreadme</code> README missing requirements.</p>
-            </div>
-
-            <div class="form-tools" id="form-tools"></div>
-
-            <div class="post-box">
-              <label class="check">
-                <input type="checkbox" id="attest">
-                <span>I didn't make this project, and I checked the repo and demo myself.</span>
-              </label>
-              <div class="post-row">
-                <button type="submit" class="btn red" id="post">Post review</button>
-                <button type="button" class="btn" id="delete-mine" hidden>Delete my review</button>
-              </div>
-              <p class="form-msg" id="form-msg" role="status"></p>
-            </div>
-          </form>
-        </aside>
+    <main class="rq-main">
+      <div class="rq-loading" id="loading">
+        <div class="rq-skel" style="width: 40%"></div>
+        <div class="rq-skel" style="width: 65%; height: 34px"></div>
+        <div class="rq-skel" style="height: 220px"></div>
       </div>
 
-      <footer class="foot">
-        <p>
-          Your draft saves in this browser as you type, so a refresh or a closed tab doesn't lose it. Posting needs a
-          Google sign-in; your review then shows with your Google name and photo, and you can edit or delete it any time.
-        </p>
-        <p>
-          Project details come from Pixl's public API and refresh about every 10 minutes. README and commits load
-          straight from GitHub. Unofficial, not made by or affiliated with Hack Club.
-        </p>
-        <p class="credits">
-          Made by <a href="https://github.com/Eraxty" target="_blank" rel="noopener">Eraxty</a>
-          <span aria-hidden="true">·</span>
-          <a href="https://github.com/Eraxty/ReviewQ" target="_blank" rel="noopener">Source on GitHub</a>
-        </p>
+      <div id="missing" hidden></div>
+
+      <div class="hc-review-split" id="split" hidden>
+        <div class="rq-left" id="left"></div>
+
+        <aside class="rq-right" aria-label="Your review">
+          <div class="hc-card rq-form-card">
+            <div class="rq-form-head">
+              <h2 class="hc-heading">Your review</h2>
+              <span class="hc-save-status" id="save-status">Autosaves as you type</span>
+            </div>
+
+            <form id="form" novalidate autocomplete="off">
+              <p class="hc-eyebrow">Submission</p>
+
+              <div class="rq-inline">
+                <label class="hc-label" for="hours">Hours to credit <span class="hc-label-hint" id="hours-hint">Decrease only</span></label>
+                <input class="hc-input rq-hours" type="number" id="hours" min="0" step="0.1" inputmode="decimal">
+              </div>
+              <input class="rq-range" type="range" id="hours-range" min="0" step="0.1" aria-label="Hours to credit">
+
+              <div class="hc-panel rq-tier">
+                <div class="rq-inline">
+                  <span class="hc-label">Tier</span>
+                  <select class="hc-native-select" id="tier" aria-label="Tier">
+                    <option value="1">T1 Spark · 12.5 RE/h</option>
+                    <option value="2">T2 Signal · 15 RE/h</option>
+                    <option value="3">T3 Grid · 18.75 RE/h</option>
+                    <option value="4">T4 Nexus · 25 RE/h</option>
+                  </select>
+                </div>
+                <p class="hc-caption rq-xs" id="tier-blurb"></p>
+                <details class="hc-details" id="payout">
+                  <summary id="payout-summary">Payout</summary>
+                  <div class="hc-details-body" id="payout-body"></div>
+                </details>
+              </div>
+
+              <div class="rq-section">
+                <p class="hc-eyebrow">Internal audit note, never shown to the player. Someone who wasn't involved should reach the same conclusion you did.</p>
+
+                <div class="rq-field" data-field="technical_features">
+                  <div class="rq-field-head">
+                    <label class="hc-label" for="technical_features">Technical features</label>
+                  </div>
+                  <span class="hc-label-hint">A detailed explanation of what the project is, to show you actually checked it. Use specific technical terms ("OAuth app", not generic words). If you can't find any, describe in detail what it looks like and does.</span>
+                  <textarea class="hc-textarea" id="technical_features" rows="5" maxlength="6000" placeholder="Example: The demo features a light-mode landing page with an action button labeled &quot;Encode some data&quot;... The repository has a broad README with screenshots and sections (Features, Tech Stack, How to use, Run locally). Written with React."></textarea>
+                  <span class="hc-counter" id="tf-count">0/20</span>
+                </div>
+
+                <div class="rq-field" data-field="deflation_reason" id="deflation-field" hidden>
+                  <div class="rq-field-head">
+                    <label class="hc-label" for="deflation_reason" id="deflation-label">Why lower the hours?</label>
+                  </div>
+                  <span class="hc-label-hint">A short justification: what made you deflate (suspected AI use, too few proofs such as few commits and no journal) and how much you deflated and approved.</span>
+                  <textarea class="hc-textarea" id="deflation_reason" rows="3" maxlength="4000" placeholder="Example: The commits are numerous but not descriptive (&quot;added css&quot; for all of them), so they do not show progress. I deflate 2h from the 10h submitted to approve 8h."></textarea>
+                </div>
+
+                <div class="rq-field" data-field="notes">
+                  <div class="rq-field-head">
+                    <label class="hc-label" for="notes">Additional notes</label>
+                  </div>
+                  <span class="hc-label-hint">Required for approval. Show your thinking: the user's level (check their repo count) and how it affects the hours (a beginner gets more hours approved than an advanced user for the same project), why you didn't deflate (commit count, whether they are descriptive and show steady progress, journals), and any other proof that supports the time.</span>
+                  <textarea class="hc-textarea" id="notes" rows="5" maxlength="6000" placeholder="Example: User is advanced, several ships in HC, 37 repos. 38 descriptive commits showing steady progress. The longest gap between commits is 1.2h, which is consistent."></textarea>
+                </div>
+              </div>
+
+              <div class="rq-section">
+                <p class="hc-eyebrow">Verdict</p>
+                <div class="rq-field" data-field="note">
+                  <div class="rq-field-head">
+                    <label class="hc-label" for="note">Note to the player</label>
+                  </div>
+                  <span class="hc-label-hint">Required. Be nice and personal, show their work is good. Macros: /ai = Rejection for excessive AI use, /fraud = Banned by the fraud squad, /readmeai = AI-generated README, /badreadme = README missing requirements</span>
+                  <textarea class="hc-textarea" id="note" rows="4" maxlength="4000" placeholder="If the site was a restaurant menu, play along and talk like you are ordering before telling them it is a great project. Finish with a short motivation like &quot;Keep it up!&quot;."></textarea>
+                </div>
+
+                <div class="rq-tools" id="tools"></div>
+
+                <div class="rq-identity" id="identity"></div>
+
+                <label class="hc-check">
+                  <input type="checkbox" id="attest">
+                  <span>I didn't make this project, and I checked the repo and demo myself.</span>
+                </label>
+
+                <div class="rq-verdicts" id="verdicts">
+                  <button type="submit" class="hc-btn hc-btn-success" value="approved">Approve</button>
+                  <button type="submit" class="hc-btn" value="needs_changes">Request changes</button>
+                  <button type="submit" class="hc-btn hc-btn-danger" value="ban">Perm reject project</button>
+                </div>
+                <div id="form-msg" role="status"></div>
+              </div>
+            </form>
+          </div>
+        </aside>
+
+        <div class="hc-review-handle" id="handle" role="separator" aria-orientation="vertical" aria-label="Resize the review panel" title="Drag to resize. Double-click to reset." tabindex="0"><span></span></div>
+      </div>
+
+      <footer class="rq-foot">
+        Unofficial copy of Pixl's review dash, built from Pixl's public API and
+        <a class="hc-link" href="https://github.com/hackclub/pixl" target="_blank" rel="noopener">its open source code</a>.
+        Community reviews are anonymous and don't count until a Pixl reviewer checks them in the real dash.
+        <span class="rq-dot">·</span>
+        Made by <a class="hc-link" href="https://github.com/Eraxty" target="_blank" rel="noopener">Eraxty</a>
+        <span class="rq-dot">·</span>
+        <a class="hc-link" href="https://github.com/Eraxty/ReviewQ" target="_blank" rel="noopener">Source</a>
       </footer>
     </main>
   </div>

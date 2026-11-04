@@ -104,38 +104,6 @@ export function copyButton(label, text, { cls = "btn copy" } = {}) {
   return button;
 }
 
-// Text written by makers and reviewers: paragraphs, links and markdown
-// images, built as DOM nodes so nothing in it can run as HTML.
-const TOKEN = /!\[[^\]]*\]\((https:\/\/[^)\s]+)\)|\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)|(https?:\/\/[^\s<>()]+[^\s<>().,!?;:'"])/g;
-
-export function richText(text, cls = "rich") {
-  const box = el("div", { class: cls });
-  const paragraphs = String(text || "")
-    .replace(/\r\n?/g, "\n")
-    .split(/\n{2,}/)
-    .filter((p) => p.trim());
-  for (const para of paragraphs) {
-    const p = el("p");
-    const lines = para.split("\n");
-    lines.forEach((line, i) => {
-      if (i) p.append(el("br"));
-      let last = 0;
-      for (const m of line.matchAll(TOKEN)) {
-        p.append(line.slice(last, m.index));
-        if (m[1]) p.append(el("img", { src: m[1], alt: "", loading: "lazy", referrerpolicy: "no-referrer" }));
-        else {
-          const href = m[3] || m[4];
-          p.append(el("a", { href, target: "_blank", rel: "noopener nofollow ugc" }, m[2] || href));
-        }
-        last = m.index + m[0].length;
-      }
-      p.append(line.slice(last));
-    });
-    box.append(p);
-  }
-  return box;
-}
-
 function applyThemeLabel() {
   const dark = document.documentElement.dataset.theme === "dark";
   $("theme").setAttribute("aria-label", dark ? "Switch to light mode" : "Switch to dark mode");

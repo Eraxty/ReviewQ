@@ -9,14 +9,19 @@ that cutoff is and tells makers how many spots they still need to move up.
 
 Live at **https://eraxty.github.io/ReviewQ/**
 
-Every project in the queue also has a review page (`review.html?id=618`) laid
-out like Pixl's review dash: its README, commits, journals and past review
-notes, plus a review form with the same fields (verdict, tier, hours to credit,
-technical features, why lower the hours, additional notes, note to the player
-with the dash's `/ai`, `/badreadme`... macros). Drafts autosave in the browser.
-Anyone signed in with Google can post their review, and every field has a copy
-button, so a real reviewer can copy what checks out into the dash and double
-check it there. Community reviews are unofficial.
+Every project in the queue also has a review page (`review.html?id=618`), a
+copy of Pixl's review dash built from its open source code
+(`apps/internal-dashboard`, MIT): the same look, the README, a commit table
+with the time between commits, AI-commit flags and diffs you can open, the
+journals, past review notes, the maker's level and earlier projects, a live
+payout preview, and the same review form (hours to credit, tier, technical
+features, why lower the hours, additional notes, note to the player with the
+`/ai`, `/badreadme`... macros) with the verdict buttons at the bottom. Drafts
+autosave in the browser and every field has a copy button.
+
+Posting a review is anonymous: each browser makes a random key and shows up as
+something like "Anon #3F9A". Real reviewers can copy what checks out into the
+dash and double check it there. Community reviews are unofficial.
 
 ## How it's hosted
 
@@ -78,49 +83,52 @@ so that verdict time is used as a lower bound and the wait shows as e.g.
 `46d+`. Software and hardware (`project_type` hardware or cad) are separate
 queues, like on the dash.
 
-## Community reviews (Firebase)
+## Community reviews (`reviews-api/`)
 
-Pages can't store anything, so posted reviews live in Firestore and sign-in
-is Firebase Auth with Google. Both fit the free Spark plan. Until
-`site/reviews-config.json` has a config, review pages still work for drafting
-and copying, and say posting isn't switched on.
+Pages can't store anything, so posted reviews go through a small API on
+Vercel (`reviews-api/`, Node, no framework) that keeps them in one private
+Vercel Blob document. Writes are conditional on the document's ETag, so two
+people posting at once can't overwrite each other.
 
-To switch it on:
+| Endpoint | What it does |
+|---|---|
+| `GET /api/reviews?project=618` | The project's reviews, newest first (cached 5 s at the edge) |
+| `POST /api/reviews {project, key, review}` | Post or edit your review |
+| `DELETE /api/reviews {project, key}` | Delete your review |
+| `GET /api/counts` | Reviews per project, read by `export.py` for the queue page |
+| `POST /api/admin {admin, action, project, author}` | `check`, `delete` someone's review, or `ban` their key |
 
-1. Create a project at https://console.firebase.google.com (no Analytics needed).
-2. **Build > Authentication > Get started**, then enable **Google** under
-   Sign-in method.
-3. **Authentication > Settings > Authorized domains**: add `eraxty.github.io`.
-4. **Build > Firestore Database > Create database**, production mode.
-5. **Firestore > Rules**: paste in `firestore.rules` and publish (or
-   `npx firebase-tools deploy --only firestore:rules --project <id>`).
-6. **Project settings > General > Your apps**: add a Web app and copy
-   `apiKey`, `authDomain`, `projectId` and `appId` into
-   `site/reviews-config.json`:
+Nobody signs in. The browser keeps a random 256-bit key in localStorage and
+the review's author id is the first 16 hex characters of its SHA-256, so a key
+can edit or delete only its own reviews and the id says nothing about who
+wrote it. Reviewers can copy their key to another device from the form. The
+server only accepts reviews for projects that are in the queue right now
+(`p/<id>.json` on the site), takes the claimed hours from Pixl's data rather
+than the browser, checks the same things the dash's form does, and limits
+each address to 30 writes per 10 minutes.
 
-   ```json
-   { "firebase": { "apiKey": "...", "authDomain": "<id>.firebaseapp.com", "projectId": "<id>", "appId": "..." } }
-   ```
+Moderation: open any review page once as `review.html?id=<id>#admin=<key>`.
+The key stays in that browser (it's removed from the address bar) and adds
+Delete and Ban author buttons to every review. Only the key's SHA-256 is in
+the code (`reviews-api/lib/http.js`), or set `ADMIN_KEY_SHA256` on Vercel to
+use a different key.
 
-   This config is meant to be public; the rules are what protect the data.
+Deploying it: create a Vercel project with `reviews-api` as the root
+directory, add a private Blob store to it (which sets
+`BLOB_READ_WRITE_TOKEN`), deploy, and put the deployment URL in
+`site/reviews-config.json` as `{"api": "https://..."}`. Until then the review
+pages work for drafting and copying, and say posting isn't connected.
 
-7. Push. The next run of the Action also adds a review count to each queue row.
+Running it locally against a JSON file:
 
-What the rules allow: anyone can read reviews; a signed-in person can post one
-review per project, edit or delete their own, and the name and photo on it
-must be their Google account's. Moderation is from the Firebase console: a
-document at `admins/<uid>` lets that person delete any review and ban authors
-from the review page; a document at `banned/<uid>` stops someone from posting.
-Find uids under **Authentication > Users**.
+```bash
+cd reviews-api && npm install
+REVIEWS_FILE=reviews.local.json SITE_URL=http://localhost:5000 node dev.js   # http://localhost:8787
+```
 
 ## Tests
 
 ```bash
 .venv/bin/python -m unittest test_queue_rules
-cd rules-test && npm install && npm test   # firestore.rules in the emulator, needs Java 11+
+cd reviews-api && npm test
 ```
-
-To try the review page against local emulators, run
-`rules-test/node_modules/.bin/firebase emulators:start --project demo-reviewq`
-and point `site/reviews-config.json` at
-`{ "firebase": { "apiKey": "x", "authDomain": "localhost", "projectId": "demo-reviewq", "appId": "x", "emulators": true } }`.

@@ -167,14 +167,28 @@ class DetailsTest(unittest.TestCase):
         self.assertEqual(d["reviews"][0]["note"], "readme pls")
         self.assertEqual(d["entries"][0]["title"], "Day 1")
         # Only what the page shows, nothing else from the response.
-        self.assertNotIn("user_id", d["project"])
         self.assertNotIn("upvotes", d)
+        self.assertNotIn("id", d["owner"])
 
     def test_details_go_when_a_project_leaves_the_queue(self):
         with crawler.connect() as conn:
             crawler.save_project(conn, api_project(618, "shipped"))
             crawler.save_project(conn, api_project(618, "approved"))
         self.assertIsNone(self.details(618))
+
+    def test_pages_carry_the_makers_public_profile(self):
+        uid = "81d07271-3bc1-47cd-81b6-0c0c746f6872"
+        with crawler.connect() as conn:
+            crawler.save_project(conn, api_project(618, "shipped", user_id=uid))
+            conn.execute(
+                "insert into players (id, json, fetched_at) values (?, ?, 0)",
+                (uid, json.dumps(crawler.public_player({"player": {"level": 7, "re": 120, "xp_hours": 9.5, "skin": "x"}, "projects": [{"id": "5", "name": "Old", "level": 1}]}))),
+            )
+            page = json.loads(crawler.page_details(conn, 618))
+        self.assertEqual(page["maker"]["level"], 7)
+        self.assertEqual(page["maker"]["re"], 120)
+        self.assertEqual(page["maker"]["approved"][0]["name"], "Old")
+        self.assertNotIn("skin", page["maker"])
 
     def test_export_writes_a_file_per_queued_project(self):
         with crawler.connect() as conn:
