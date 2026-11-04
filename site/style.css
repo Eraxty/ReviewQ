@@ -108,6 +108,19 @@ body {
   gap: 24px;
 }
 
+.banner {
+  border: 4px solid var(--ink);
+  border-radius: 16px;
+  box-shadow: 4px 4px 0 0 var(--ink);
+  background: var(--red);
+  color: #fff;
+  padding: 14px 20px;
+  font-family: var(--body);
+  font-size: 15px;
+  font-weight: 600;
+}
+.banner[hidden] { display: none; }
+
 .card {
   background: var(--paper);
   border: 4px solid var(--ink);

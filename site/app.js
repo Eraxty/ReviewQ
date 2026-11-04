@@ -222,8 +222,13 @@ async function refresh() {
       const when = mins < 1 ? "just now" : `${mins} min ago`;
       $("updated").textContent = `Updated ${when}. The queue is re-checked about every 10 minutes and this page reloads the data every 2.`;
     }
-    $("live").classList.toggle("on", !stale && !data.crawling);
-    $("live-text").textContent = data.crawling ? "Scanning" : stale ? `Updated ${Math.round(mins / 60)}h ago` : "Live";
+    const locked = data.api_locked_since;
+    $("banner").hidden = !locked;
+    if (locked) {
+      $("banner").textContent = `Pixl stopped showing unreviewed projects publicly on ${new Date(locked).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}. This is the queue as it was then, and it'll update again once they're public.`;
+    }
+    $("live").classList.toggle("on", !stale && !data.crawling && !locked);
+    $("live-text").textContent = locked ? "Paused" : data.crawling ? "Scanning" : stale ? `Updated ${Math.round(mins / 60)}h ago` : "Live";
     render();
   } catch {
     $("updated").textContent = "Couldn't load the queue. Try refreshing.";

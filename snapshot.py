@@ -46,6 +46,8 @@ def build() -> dict:
         },
         # The first full crawl hasn't finished until a sweep has been recorded.
         "crawling": "last_sweep" not in meta,
+        # Set while Pixl hides unshipped projects; the queue is then frozen.
+        "api_locked_since": meta.get("api_locked_since"),
         "probed": probed,
         "top_id": top,
         "queues": queues,

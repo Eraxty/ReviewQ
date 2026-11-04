@@ -29,7 +29,7 @@ jobs:
     timeout-minutes: 25
     environment:
       name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
+      url: ${{ steps.deploy.outputs.page_url || steps.deploy-retry.outputs.page_url }}
     steps:
       - uses: actions/checkout@v7
 
@@ -68,5 +68,16 @@ jobs:
         with:
           path: _site
 
+      # GitHub sometimes answers the deploy with a 502; one retry after a
+      # short wait gets past it, and the next scheduled run covers the rest.
       - id: deploy
+        uses: actions/deploy-pages@v5
+        continue-on-error: true
+
+      - name: Wait before retrying the deploy
+        if: steps.deploy.outcome == 'failure'
+        run: sleep 30
+
+      - id: deploy-retry
+        if: steps.deploy.outcome == 'failure'
         uses: actions/deploy-pages@v5

@@ -218,13 +218,21 @@ def probe(pid: int) -> str | None:
     return status
 
 
-def changed_in_list() -> set[int]:
-    """Ids whose status in the newest-100 unshipped list differs from ours.
+def unshipped_list() -> dict[int, str]:
+    """Status of the newest 100 unshipped projects, by id.
 
-    One request that catches fresh ships between the slower draft re-checks.
+    Empty means the API is hiding unshipped projects again (it did for a day,
+    server commit b38c4d14): every queued project would then 404.
     """
     data = get_json(f"{API}?shipped=unshipped&limit=100") or {}
-    listed = {int(p["id"]): p.get("status") for p in data.get("projects", [])}
+    return {int(p["id"]): p.get("status") for p in data.get("projects", [])}
+
+
+def changed_in_list(listed: dict[int, str]) -> set[int]:
+    """Ids whose status in the unshipped list differs from ours.
+
+    Catches fresh ships between the slower draft re-checks.
+    """
     if not listed:
         return set()
     with connect() as conn:
@@ -233,13 +241,12 @@ def changed_in_list() -> set[int]:
     return {pid for pid, status in listed.items() if known.get(pid, "?") != status}
 
 
-def due_ids() -> list[int]:
+def due_ids(urgent: set[int] = frozenset()) -> list[int]:
     """Ids worth probing now, queued projects first."""
     now = time.time()
     with connect() as conn:
         checked = {r["id"]: (r["status"], r["checked_at"]) for r in conn.execute("select * from probes")}
     top = max((pid for pid, (status, _) in checked.items() if status), default=0)
-    urgent = changed_in_list()
     top = max([top, *urgent])
 
     due = []
@@ -255,7 +262,21 @@ def due_ids() -> list[int]:
 
 
 def sweep(log=print, budget_seconds: float | None = None) -> int:
-    due = due_ids()
+    listed = unshipped_list()
+    with connect() as conn:
+        if listed:
+            conn.execute("delete from meta where key = 'api_locked_since'")
+        else:
+            conn.execute(
+                "insert or ignore into meta (key, value) values ('api_locked_since', ?)",
+                (datetime.now(timezone.utc).isoformat(),),
+            )
+    if not listed:
+        # Probing now would 404 every queued project and empty the queue, so
+        # keep the last known one until unshipped projects are public again.
+        log("[crawler] the API lists no unshipped projects, keeping the last known queue")
+        return 0
+    due = due_ids(changed_in_list(listed))
     ids = due
     if budget_seconds is not None:
         # Due ids come queued-first, so a capped run still covers the queue
