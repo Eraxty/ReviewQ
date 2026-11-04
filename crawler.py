@@ -1,0 +1,296 @@
+"""Crawls Pixl's public project API into SQLite.
+
+The list endpoint caps at 100 rows with no paging, so every project id is
+probed through /api/explore/projects/:id, which returns its status, ship time
+and review history. After the first full pass, ids are re-checked on a
+schedule that depends on their status: queued projects every few minutes,
+drafts and the rest less often.
+"""
+
+import json
+import sqlite3
+import threading
+import time
+import urllib.error
+import urllib.request
+from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
+from datetime import datetime, timezone
+from pathlib import Path
+
+from queue_rules import FINAL_CHECKS, WAITING, normalize, queue_of, wait_start
+
+API = "https://server.pixl.hackclub.com/api/explore/projects"
+USER_AGENT = "pixl-queue/1.0 (public review queue viewer)"
+DB_PATH = Path(__file__).parent / "data" / "pixl.db"
+
+# The server allows 300 requests/min per IP; stay well under it.
+REQUESTS_PER_SECOND = 3
+WORKERS = 4
+# Keep probing this many ids past the highest one that exists.
+ID_HEADROOM = 50
+
+MIN = 60
+RECHECK_SECONDS = {
+    WAITING: 5 * MIN,
+    **{s: 5 * MIN for s in FINAL_CHECKS},
+    "needs_changes": 15 * MIN,
+    "draft": 30 * MIN,
+    "approved": 24 * 60 * MIN,
+    None: 6 * 60 * MIN,  # 404: deleted, archived, rejected, banned or never existed
+}
+DEFAULT_RECHECK = 30 * MIN
+# Lower runs first, so queue changes show up before the long tail of drafts.
+PRIORITY = {WAITING: 0, **{s: 0 for s in FINAL_CHECKS}, "needs_changes": 1}
+
+SCHEMA = """
+create table if not exists projects (
+  id integer primary key,
+  name text not null,
+  owner_name text,
+  project_type text,
+  queue text not null,
+  level integer,
+  status text not null,
+  image_url text,
+  created_at text,
+  shipped_at text,
+  wait_start text,
+  wait_exact integer not null default 1,
+  is_peak integer not null default 0,
+  fetched_at text not null
+);
+create index if not exists projects_status on projects(status);
+create table if not exists reviews (
+  project_id integer not null,
+  verdict text not null,
+  created_at text not null
+);
+create index if not exists reviews_project on reviews(project_id);
+create table if not exists probes (
+  id integer primary key,
+  status text,
+  checked_at real not null
+);
+create table if not exists first_ships (
+  id integer primary key,
+  shipped_at text not null
+);
+create table if not exists meta (key text primary key, value text);
+"""
+
+
+@contextmanager
+def connect() -> Iterator[sqlite3.Connection]:
+    """A connection that commits on success and is always closed."""
+    DB_PATH.parent.mkdir(exist_ok=True)
+    conn = sqlite3.connect(DB_PATH, timeout=30)
+    conn.row_factory = sqlite3.Row
+    conn.execute("pragma journal_mode=wal")
+    try:
+        with conn:
+            yield conn
+    finally:
+        conn.close()
+
+
+def init_db() -> None:
+    with connect() as conn:
+        conn.executescript(SCHEMA)
+        # Seed first-seen ships from projects crawled before that table existed.
+        missing = conn.execute(
+            """select id, shipped_at from projects
+               where shipped_at is not null and id not in (select id from first_ships)"""
+        ).fetchall()
+        conn.executemany(
+            "insert into first_ships (id, shipped_at) values (?, ?)",
+            [(r["id"], normalize(r["shipped_at"])) for r in missing],
+        )
+
+
+class RateLimiter:
+    def __init__(self, per_second: float):
+        self.gap = 1.0 / per_second
+        self.next_at = 0.0
+        self.lock = threading.Lock()
+
+    def wait(self) -> None:
+        with self.lock:
+            now = time.monotonic()
+            at = max(now, self.next_at)
+            self.next_at = at + self.gap
+        time.sleep(max(0.0, at - now))
+
+
+limiter = RateLimiter(REQUESTS_PER_SECOND)
+
+
+def get_json(url: str) -> dict | None:
+    """GET a JSON body. Returns None on 404, retries on 429 and network errors."""
+    for attempt in range(5):
+        limiter.wait()
+        req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=20) as res:
+                return json.load(res)
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                return None
+            if e.code == 429:
+                time.sleep(int(e.headers.get("Retry-After") or 30))
+                continue
+            if e.code >= 500:
+                time.sleep(2 ** attempt)
+                continue
+            raise
+        except (urllib.error.URLError, TimeoutError):
+            time.sleep(2 ** attempt)
+    raise RuntimeError(f"giving up on {url}")
+
+
+def save_project(conn: sqlite3.Connection, data: dict) -> str:
+    p = data["project"]
+    reviews = [
+        {"verdict": r["verdict"], "created_at": r["created_at"]}
+        for r in data.get("reviews") or []
+        if r.get("verdict") and r.get("created_at")
+    ]
+    pid = int(p["id"])
+    shipped_at = p.get("shipped_at")
+    if shipped_at:
+        # Pixl's first_shipped_at is set once and never reset, but only the
+        # latest shipped_at is public. Remember the earliest one seen so an
+        # unship and reship doesn't send a project to the back of the queue.
+        conn.execute(
+            """insert into first_ships (id, shipped_at) values (?, ?)
+               on conflict(id) do update set shipped_at = min(shipped_at, excluded.shipped_at)""",
+            (pid, normalize(shipped_at)),
+        )
+    first_seen = conn.execute("select shipped_at from first_ships where id = ?", (pid,)).fetchone()
+    start, exact = wait_start(shipped_at, reviews, first_seen[0] if first_seen else None)
+    owner = data.get("owner") or {}
+    status = p.get("status") or "unknown"
+    conn.execute(
+        """insert or replace into projects
+           (id, name, owner_name, project_type, queue, level, status, image_url,
+            created_at, shipped_at, wait_start, wait_exact, is_peak, fetched_at)
+           values (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (
+            pid,
+            p.get("name") or "",
+            owner.get("display_name"),
+            p.get("project_type"),
+            queue_of(p.get("project_type")),
+            p.get("level"),
+            status,
+            p.get("image_url"),
+            p.get("created_at"),
+            shipped_at,
+            start,
+            int(exact),
+            int(bool(p.get("is_peak"))),
+            datetime.now(timezone.utc).isoformat(),
+        ),
+    )
+    conn.execute("delete from reviews where project_id = ?", (pid,))
+    conn.executemany(
+        "insert into reviews (project_id, verdict, created_at) values (?,?,?)",
+        [(pid, r["verdict"], r["created_at"]) for r in reviews],
+    )
+    return status
+
+
+def probe(pid: int) -> str | None:
+    data = get_json(f"{API}/{pid}")
+    with connect() as conn:
+        if data and data.get("ok") and data.get("project"):
+            status = save_project(conn, data)
+        else:
+            status = None
+            # Gone from the public API, so no longer in any queue.
+            conn.execute("delete from projects where id = ?", (pid,))
+            conn.execute("delete from reviews where project_id = ?", (pid,))
+        conn.execute(
+            "insert or replace into probes (id, status, checked_at) values (?,?,?)",
+            (pid, status, time.time()),
+        )
+    return status
+
+
+def changed_in_list() -> set[int]:
+    """Ids whose status in the newest-100 unshipped list differs from ours.
+
+    One request that catches fresh ships between the slower draft re-checks.
+    """
+    data = get_json(f"{API}?shipped=unshipped&limit=100") or {}
+    listed = {int(p["id"]): p.get("status") for p in data.get("projects", [])}
+    if not listed:
+        return set()
+    with connect() as conn:
+        marks = ",".join("?" * len(listed))
+        known = dict(conn.execute(f"select id, status from probes where id in ({marks})", list(listed)).fetchall())
+    return {pid for pid, status in listed.items() if known.get(pid, "?") != status}
+
+
+def due_ids() -> list[int]:
+    """Ids worth probing now, queued projects first."""
+    now = time.time()
+    with connect() as conn:
+        checked = {r["id"]: (r["status"], r["checked_at"]) for r in conn.execute("select * from probes")}
+    top = max((pid for pid, (status, _) in checked.items() if status), default=0)
+    urgent = changed_in_list()
+    top = max([top, *urgent])
+
+    due = []
+    for pid in range(1, top + ID_HEADROOM + 1):
+        state = checked.get(pid)
+        if pid in urgent or state is None:
+            due.append((0, -pid))
+            continue
+        status, at = state
+        if now - at > RECHECK_SECONDS.get(status, DEFAULT_RECHECK):
+            due.append((PRIORITY.get(status, 2), -pid))
+    return [-neg for _, neg in sorted(due)]
+
+
+def sweep(log=print) -> int:
+    ids = due_ids()
+    if not ids:
+        return 0
+    started = time.time()
+    if len(ids) > 50:
+        log(f"[crawler] probing {len(ids)} ids")
+    with ThreadPoolExecutor(WORKERS) as pool:
+        for i, _ in enumerate(pool.map(probe, ids), 1):
+            if i % 250 == 0:
+                log(f"[crawler] {i}/{len(ids)} probed")
+    with connect() as conn:
+        conn.execute(
+            "insert or replace into meta (key, value) values ('last_sweep', ?)",
+            (datetime.now(timezone.utc).isoformat(),),
+        )
+    if len(ids) > 50:
+        log(f"[crawler] sweep of {len(ids)} ids done in {time.time() - started:.0f}s")
+    return len(ids)
+
+
+def run_forever(log=print) -> None:
+    init_db()
+    while True:
+        try:
+            sweep(log)
+        except Exception as e:  # keep the site up even if the API misbehaves
+            log(f"[crawler] sweep failed: {e!r}")
+        time.sleep(60)
+
+
+def start_background(log=print) -> threading.Thread:
+    t = threading.Thread(target=run_forever, args=(log,), daemon=True, name="crawler")
+    t.start()
+    return t
+
+
+if __name__ == "__main__":
+    init_db()
+    sweep()

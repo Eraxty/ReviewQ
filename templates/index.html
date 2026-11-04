@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pixl queue</title>
+  <meta name="description" content="Unofficial live view of the Pixl review queue: every project waiting for review, longest wait first.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;700;800&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <script src="{{ url_for('static', filename='app.js') }}" defer></script>
+</head>
+<body>
+  <div class="bg" aria-hidden="true"><div class="bg-pattern"></div></div>
+
+  <div class="content">
+    <header class="head">
+      <div class="wordmark"><span class="word">PIXL</span><span class="word-sub">queue</span></div>
+      <div class="badge" id="live"><span class="live-dot"></span><span id="live-text">Loading</span></div>
+    </header>
+
+    <main class="page">
+      <section class="card pop">
+        <h2 class="card-title">Review Pipeline</h2>
+        <div class="total-row">
+          <span class="num" id="total">-</span>
+          <span class="desc">projects waiting for review</span>
+        </div>
+        <div class="bar" id="bar">
+          <div class="bar-seg" id="seg-software" style="background:#42a5f5"><span></span></div>
+          <div class="bar-seg" id="seg-hardware" style="background:#ab47bc"><span></span></div>
+          <div class="bar-seg" id="seg-final" style="background:#f5a623"><span></span></div>
+        </div>
+        <div class="legend">
+          <span class="legend-item"><span class="dot" style="background:#42a5f5"></span>Software queue</span>
+          <span class="legend-item"><span class="dot" style="background:#ab47bc"></span>Hardware queue</span>
+          <span class="legend-item"><span class="dot" style="background:#f5a623"></span>Passed first review</span>
+        </div>
+        <div class="recent-row">
+          <span class="recent-num" id="recent">-</span>
+          <span class="desc">verdicts in the last 24h</span>
+          <span class="recent-breakdown" id="recent-breakdown"></span>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2 class="card-title">Find your project</h2>
+        <label class="search">
+          <span class="visually-hidden">Project name, maker or #id</span>
+          <input type="search" id="search" placeholder="Project name, maker or #id" autocomplete="off" spellcheck="false">
+        </label>
+        <div class="callout" id="callout" aria-live="polite" hidden></div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2 class="card-title">Waiting for review</h2>
+          <div class="tabs" role="tablist" aria-label="Queue">
+            <button type="button" role="tab" data-queue="software" aria-selected="true">Software <span class="count" id="c-software"></span></button>
+            <button type="button" role="tab" data-queue="hardware" aria-selected="false">Hardware <span class="count" id="c-hardware"></span></button>
+          </div>
+        </div>
+        <p class="note">
+          <svg class="lock" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 7V5a3.5 3.5 0 0 1 7 0v2h.5A1 1 0 0 1 13 8v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h.5zm1.5 0h4V5a2 2 0 1 0-4 0v2z"/></svg>
+          <span><strong>Reviewers can only open the top 15</strong> in each queue. Everything below is locked until it moves up, so the queue gets reviewed in order.</span>
+        </p>
+        <ol class="list" id="waiting"></ol>
+      </section>
+
+      <section class="card">
+        <h2 class="card-title">Passed first review</h2>
+        <p class="note plain">These got through the first review and are waiting on the final fraud check and spot check.</p>
+        <ol class="list" id="final"></ol>
+      </section>
+
+      <footer class="foot">
+        <p id="updated">Loading...</p>
+        <p>
+          Waiting time counts from the first ship, like the review dash. When a project is shipped again (after "needs
+          changes", or after the maker unshipped it), only the latest ship date is public. The wait then counts from the
+          earliest ship this site has seen, or from the first "needs changes", and is marked with a +. Its real wait can
+          be a bit longer, so it may sit a little higher in the real queue.
+        </p>
+        <p>
+          The top-15 line is approximate: projects reserved for or claimed by a reviewer don't use up a slot, and Pixl
+          owners and reviewers with full queue access can open any project.
+        </p>
+        <p>Data comes from Pixl's public API. Unofficial, not made by or affiliated with Hack Club.</p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>
