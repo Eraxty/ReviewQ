@@ -1,58 +1,23 @@
-const DAY = 86400000;
-// Plain reviewers can only open this many projects from the top of each queue
-// (QUEUE_OPEN_COUNT in Pixl's internal dashboard).
-const OPEN_COUNT = 15;
-const TIERS = { 1: "T1 Spark", 2: "T2 Signal", 3: "T3 Grid", 4: "T4 Nexus" };
-const TYPES = {
-  web: "Web playable",
-  other: "Other / not sure",
-  python: "Python",
-  windows: "Windows",
-  mac: "Mac",
-  linux: "Linux",
-  android: "Android",
-  cross_platform: "Cross platform",
-  hardware: "Hardware",
-  cad: "CAD",
-};
-const $ = (id) => document.getElementById(id);
+import {
+  $,
+  DAY,
+  ICONS,
+  OPEN_COUNT,
+  TIERS,
+  TYPES,
+  copyButton,
+  el,
+  fmtDate,
+  reduceMotion,
+  setupTheme,
+  svgIcon,
+  waitText,
+} from "./shared.js";
 
 let data = null;
 let queue = new URLSearchParams(location.search).get("queue") === "hardware" ? "hardware" : "software";
 
-function waitDays(row) {
-  return row.wait_start ? (Date.now() - Date.parse(row.wait_start)) / DAY : 0;
-}
-
-function fmtWait(days) {
-  if (days < 1) return `${Math.max(1, Math.round(days * 24))}h`;
-  return `${Math.floor(days)}d`;
-}
-
-const waitText = (row) => fmtWait(waitDays(row)) + (row.wait_exact ? "" : "+");
-const fmtDate = (iso) => (iso ? new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short" }) : "-");
-
-function el(tag, attrs = {}, ...children) {
-  const n = document.createElement(tag);
-  for (const [k, v] of Object.entries(attrs)) {
-    if (k === "class") n.className = v;
-    else n.setAttribute(k, v);
-  }
-  n.append(...children.filter((c) => c !== null && c !== undefined && c !== false));
-  return n;
-}
-
-function lockIcon() {
-  const ns = "http://www.w3.org/2000/svg";
-  const svg = document.createElementNS(ns, "svg");
-  svg.setAttribute("viewBox", "0 0 16 16");
-  svg.setAttribute("class", "lock");
-  svg.setAttribute("aria-hidden", "true");
-  const path = document.createElementNS(ns, "path");
-  path.setAttribute("d", "M4.5 7V5a3.5 3.5 0 0 1 7 0v2h.5A1 1 0 0 1 13 8v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h.5zm1.5 0h4V5a2 2 0 1 0-4 0v2z");
-  svg.appendChild(path);
-  return svg;
-}
+const reviewUrl = (id) => `review.html?id=${encodeURIComponent(id)}`;
 
 // `pos` is the queue position, or null for lists without an order that matters.
 function itemEl(row, pos, { hit = false, gated = false } = {}) {
@@ -68,6 +33,14 @@ function itemEl(row, pos, { hit = false, gated = false } = {}) {
     el("span", { class: "chip" }, TYPES[row.project_type] || row.project_type || "-"),
     row.wait_exact ? null : el("span", { class: "chip resub", title: "Shipped again after \"needs changes\" or after being unshipped" }, "Resubmitted"),
     row.is_peak ? el("span", { class: "chip peak" }, "Beacon pick") : null,
+    row.community_reviews
+      ? el(
+          "span",
+          { class: "chip talk", title: `${row.community_reviews} community review${row.community_reviews === 1 ? "" : "s"}` },
+          svgIcon(ICONS.chat),
+          String(row.community_reviews),
+        )
+      : null,
     el("span", {}, row.owner_name ? `@${row.owner_name}` : ""),
   );
   const wait = el(
@@ -86,7 +59,7 @@ function itemEl(row, pos, { hit = false, gated = false } = {}) {
     el(
       "div",
       { class: "info" },
-      el("a", { class: "title", href: `https://pixl.hackclub.com/projects/${encodeURIComponent(row.id)}`, target: "_blank", rel: "noopener" }, row.name),
+      el("a", { class: "title", href: reviewUrl(row.id) }, row.name),
       meta,
     ),
     wait,
@@ -97,7 +70,7 @@ function cutoffEl() {
   return el(
     "li",
     { class: "cutoff", "aria-label": `Reviewers can only open the top ${OPEN_COUNT}. Projects below are locked.` },
-    el("span", {}, lockIcon(), `Locked below: reviewers can only open the top ${OPEN_COUNT}`),
+    el("span", {}, svgIcon(ICONS.lock, { cls: "lock" }), `Locked below: reviewers can only open the top ${OPEN_COUNT}`),
   );
 }
 
@@ -108,8 +81,6 @@ function matches(row, term) {
   if (/^\d+$/.test(t) && String(row.id) === t) return true;
   return row.name.toLowerCase().includes(t) || (row.owner_name || "").toLowerCase().includes(t);
 }
-
-const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 function fillList(list, rows, term, emptyText, gated, animate) {
   list.classList.remove("enter");
@@ -194,19 +165,14 @@ function trackEls(pos, total, animate) {
   ];
 }
 
-function copyButton(id) {
-  const button = el("button", { type: "button", class: "btn copy" }, "Copy link");
-  button.addEventListener("click", async () => {
-    const url = `${location.origin}${location.pathname}?q=%23${id}${queue === "hardware" ? "&queue=hardware" : ""}`;
-    try {
-      await navigator.clipboard.writeText(url);
-      button.textContent = "Copied!";
-    } catch {
-      button.textContent = "Couldn't copy";
-    }
-    setTimeout(() => (button.textContent = "Copy link"), 1600);
-  });
-  return button;
+function actions(id) {
+  const link = () => `${location.origin}${location.pathname}?q=%23${id}${queue === "hardware" ? "&queue=hardware" : ""}`;
+  return el(
+    "div",
+    { class: "callout-actions" },
+    el("a", { class: "btn copy", href: reviewUrl(id) }, "Review page"),
+    copyButton("Copy link", link),
+  );
 }
 
 // `key` identifies what the callout is about; it only pops in again when that changes.
@@ -247,7 +213,7 @@ function renderCallout(term, waitingHits, finalHits) {
           : `Locked for now: ${toGo} more project${toGo === 1 ? "" : "s"} need to be reviewed before you reach the top ${OPEN_COUNT} and reviewers can open it. Waiting ${waitText(row)}. ${aheadText}`,
         deltaEl(rememberPosition(row.id, pos), pos),
       ],
-      action: copyButton(row.id),
+      action: actions(row.id),
       extra: (fresh) => trackEls(pos, total, fresh),
     });
   } else if (waitingHits.length > 1) {
@@ -262,6 +228,7 @@ function renderCallout(term, waitingHits, finalHits) {
       key: `final:${finalHits[0][0].id}`,
       title: "Passed first review",
       lines: ["It's out of the first-pass queue and waiting on the final fraud check and spot check."],
+      action: finalHits.length === 1 ? actions(finalHits[0][0].id) : null,
     });
   } else {
     const other = queue === "software" ? "hardware" : "software";
@@ -365,43 +332,11 @@ async function refresh() {
   }
 }
 
-function applyThemeLabel() {
-  const dark = document.documentElement.dataset.theme === "dark";
-  $("theme").setAttribute("aria-label", dark ? "Switch to light mode" : "Switch to dark mode");
-  $("theme").title = dark ? "Light mode" : "Dark mode";
-}
-
-let themeTimer = 0;
-function setTheme(theme, save) {
-  const root = document.documentElement;
-  root.classList.add("theming");
-  root.dataset.theme = theme;
-  if (save) {
-    try {
-      localStorage.setItem("pq-theme", theme);
-    } catch {}
-  }
-  applyThemeLabel();
-  clearTimeout(themeTimer);
-  themeTimer = setTimeout(() => root.classList.remove("theming"), 400);
-}
-
 document.addEventListener("DOMContentLoaded", () => {
   const params = new URLSearchParams(location.search);
   if (params.get("q")) $("search").value = params.get("q");
 
-  applyThemeLabel();
-  $("theme").addEventListener("click", () =>
-    setTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark", true),
-  );
-  // Follow the system theme until the visitor picks one.
-  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", (e) => {
-    let saved = null;
-    try {
-      saved = localStorage.getItem("pq-theme");
-    } catch {}
-    if (!saved) setTheme(e.matches ? "dark" : "light", false);
-  });
+  setupTheme();
 
   document.querySelectorAll(".tabs button").forEach((b) =>
     b.addEventListener("click", () => {

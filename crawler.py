@@ -78,6 +78,12 @@ create table if not exists first_ships (
   shipped_at text not null
 );
 create table if not exists meta (key text primary key, value text);
+-- Public details (description, links, journals, past review notes) of queued
+-- projects, for the review page.
+create table if not exists details (
+  id integer primary key,
+  json text not null
+);
 """
 
 
@@ -149,6 +155,29 @@ def get_json(url: str) -> dict | None:
     raise RuntimeError(f"giving up on {url}")
 
 
+QUEUED = (WAITING, *FINAL_CHECKS)
+
+
+def public_details(data: dict) -> dict:
+    """The parts of a project's API response the review page shows."""
+    p = data["project"]
+    owner = data.get("owner") or {}
+    pick = lambda d, keys: {k: d.get(k) for k in keys}
+    return {
+        "project": pick(
+            p,
+            ("id", "name", "description", "project_type", "level", "status", "image_url", "repo_url",
+             "demo_url", "created_at", "shipped_at", "hackatime_seconds", "is_peak", "approved_hours"),
+        ),
+        "owner": pick(owner, ("display_name", "avatar_url")),
+        "entries": [pick(e, ("id", "title", "content", "hours", "created_at", "edited_at")) for e in data.get("entries") or []],
+        "reviews": [
+            pick(r, ("verdict", "created_at", "note", "claimed_hours", "approved_hours"))
+            for r in data.get("reviews") or []
+        ],
+    }
+
+
 def save_project(conn: sqlite3.Connection, data: dict) -> str:
     p = data["project"]
     reviews = [
@@ -198,6 +227,13 @@ def save_project(conn: sqlite3.Connection, data: dict) -> str:
         "insert into reviews (project_id, verdict, created_at) values (?,?,?)",
         [(pid, r["verdict"], r["created_at"]) for r in reviews],
     )
+    if status in QUEUED:
+        conn.execute(
+            "insert or replace into details (id, json) values (?, ?)",
+            (pid, json.dumps(public_details(data), separators=(",", ":"))),
+        )
+    else:
+        conn.execute("delete from details where id = ?", (pid,))
     return status
 
 
@@ -211,6 +247,7 @@ def probe(pid: int) -> str | None:
             # Gone from the public API, so no longer in any queue.
             conn.execute("delete from projects where id = ?", (pid,))
             conn.execute("delete from reviews where project_id = ?", (pid,))
+            conn.execute("delete from details where id = ?", (pid,))
         conn.execute(
             "insert or replace into probes (id, status, checked_at) values (?,?,?)",
             (pid, status, time.time()),

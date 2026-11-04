@@ -1,9 +1,11 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
 from datetime import datetime, timezone
 
 import crawler
+import export
 from queue_rules import queue_of, reviews_per_day, sort_longest_wait, wait_start
 
 NOW = datetime(2026, 11, 4, 12, tzinfo=timezone.utc)
@@ -109,6 +111,81 @@ class LockdownTest(unittest.TestCase):
         crawler.sweep(log=lambda _: None, budget_seconds=0.4)
         with crawler.connect() as conn:
             self.assertIsNone(conn.execute("select value from meta where key = 'api_locked_since'").fetchone())
+
+
+
+def api_project(pid, status, **extra):
+    return {
+        "ok": True,
+        "project": {
+            "id": str(pid),
+            "name": f"project {pid}",
+            "description": "A thing",
+            "project_type": "web",
+            "level": 2,
+            "status": status,
+            "repo_url": "https://github.com/a/b",
+            "demo_url": "https://a.github.io/b",
+            "shipped_at": "2026-11-01T00:00:00.000Z",
+            "created_at": "2026-10-01T00:00:00.000Z",
+            "hackatime_seconds": 36000,
+            "user_id": "secret-ish uuid",
+            **extra,
+        },
+        "owner": {"id": "uuid", "display_name": "Maker", "avatar_url": "https://example.com/a.png"},
+        "entries": [{"id": "1", "title": "Day 1", "content": "hi", "hours": 0, "created_at": "2026-10-02T00:00:00Z", "edited_at": None}],
+        "reviews": [{"verdict": "needs_changes", "created_at": "2026-10-20T00:00:00Z", "note": "readme pls", "claimed_hours": 9, "approved_hours": None}],
+        "upvotes": 3,
+        "has_upvoted": False,
+    }
+
+
+class DetailsTest(unittest.TestCase):
+    """Queued projects keep their public details for the review page."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.saved = crawler.DB_PATH
+        crawler.DB_PATH = Path(self.tmp.name) / "pixl.db"
+        crawler.init_db()
+
+    def tearDown(self):
+        crawler.DB_PATH = self.saved
+        self.tmp.cleanup()
+
+    def details(self, pid):
+        with crawler.connect() as conn:
+            row = conn.execute("select json from details where id = ?", (pid,)).fetchone()
+        return json.loads(row[0]) if row else None
+
+    def test_queued_projects_keep_details(self):
+        with crawler.connect() as conn:
+            crawler.save_project(conn, api_project(618, "shipped"))
+        d = self.details(618)
+        self.assertEqual(d["project"]["repo_url"], "https://github.com/a/b")
+        self.assertEqual(d["owner"], {"display_name": "Maker", "avatar_url": "https://example.com/a.png"})
+        self.assertEqual(d["reviews"][0]["note"], "readme pls")
+        self.assertEqual(d["entries"][0]["title"], "Day 1")
+        # Only what the page shows, nothing else from the response.
+        self.assertNotIn("user_id", d["project"])
+        self.assertNotIn("upvotes", d)
+
+    def test_details_go_when_a_project_leaves_the_queue(self):
+        with crawler.connect() as conn:
+            crawler.save_project(conn, api_project(618, "shipped"))
+            crawler.save_project(conn, api_project(618, "approved"))
+        self.assertIsNone(self.details(618))
+
+    def test_export_writes_a_file_per_queued_project(self):
+        with crawler.connect() as conn:
+            crawler.save_project(conn, api_project(618, "shipped"))
+            crawler.save_project(conn, api_project(700, "second_review"))
+            crawler.save_project(conn, api_project(701, "draft"))
+        out = Path(self.tmp.name) / "site"
+        export.main(out)
+        self.assertEqual(sorted(f.name for f in (out / "p").iterdir()), ["618.json", "700.json"])
+        self.assertEqual(json.loads((out / "p" / "618.json").read_text())["project"]["id"], "618")
+        self.assertTrue((out / "review.html").exists())
 
 
 if __name__ == "__main__":

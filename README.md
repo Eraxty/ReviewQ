@@ -9,6 +9,15 @@ that cutoff is and tells makers how many spots they still need to move up.
 
 Live at **https://eraxty.github.io/ReviewQ/**
 
+Every project in the queue also has a review page (`review.html?id=618`) laid
+out like Pixl's review dash: its README, commits, journals and past review
+notes, plus a review form with the same fields (verdict, tier, hours to credit,
+technical features, why lower the hours, additional notes, note to the player
+with the dash's `/ai`, `/badreadme`... macros). Drafts autosave in the browser.
+Anyone signed in with Google can post their review, and every field has a copy
+button, so a real reviewer can copy what checks out into the dash and double
+check it there. Community reviews are unofficial.
+
 ## How it's hosted
 
 GitHub Pages only serves static files, and Pixl's API rejects browser
@@ -18,8 +27,9 @@ requests from other sites, so the page can't call it directly. Instead
 1. restores the crawler database from the `state` branch,
 2. runs `python crawler.py --budget 420` (queued projects first),
 3. force-pushes the database back to `state` as a single commit,
-4. runs `python export.py _site` (the `site/` files plus `queue.json`) and
-   deploys it to Pages.
+4. runs `python export.py _site` (the `site/` files, `queue.json`, and
+   `p/<id>.json` with the public details of each queued project) and deploys
+   it to Pages.
 
 The crawler and exporter only use the Python standard library. GitHub can
 delay scheduled runs, and it pauses schedules in repos with no activity for 60
@@ -68,8 +78,49 @@ so that verdict time is used as a lower bound and the wait shows as e.g.
 `46d+`. Software and hardware (`project_type` hardware or cad) are separate
 queues, like on the dash.
 
+## Community reviews (Firebase)
+
+Pages can't store anything, so posted reviews live in Firestore and sign-in
+is Firebase Auth with Google. Both fit the free Spark plan. Until
+`site/reviews-config.json` has a config, review pages still work for drafting
+and copying, and say posting isn't switched on.
+
+To switch it on:
+
+1. Create a project at https://console.firebase.google.com (no Analytics needed).
+2. **Build > Authentication > Get started**, then enable **Google** under
+   Sign-in method.
+3. **Authentication > Settings > Authorized domains**: add `eraxty.github.io`.
+4. **Build > Firestore Database > Create database**, production mode.
+5. **Firestore > Rules**: paste in `firestore.rules` and publish (or
+   `npx firebase-tools deploy --only firestore:rules --project <id>`).
+6. **Project settings > General > Your apps**: add a Web app and copy
+   `apiKey`, `authDomain`, `projectId` and `appId` into
+   `site/reviews-config.json`:
+
+   ```json
+   { "firebase": { "apiKey": "...", "authDomain": "<id>.firebaseapp.com", "projectId": "<id>", "appId": "..." } }
+   ```
+
+   This config is meant to be public; the rules are what protect the data.
+
+7. Push. The next run of the Action also adds a review count to each queue row.
+
+What the rules allow: anyone can read reviews; a signed-in person can post one
+review per project, edit or delete their own, and the name and photo on it
+must be their Google account's. Moderation is from the Firebase console: a
+document at `admins/<uid>` lets that person delete any review and ban authors
+from the review page; a document at `banned/<uid>` stops someone from posting.
+Find uids under **Authentication > Users**.
+
 ## Tests
 
 ```bash
 .venv/bin/python -m unittest test_queue_rules
+cd rules-test && npm install && npm test   # firestore.rules in the emulator, needs Java 11+
 ```
+
+To try the review page against local emulators, run
+`rules-test/node_modules/.bin/firebase emulators:start --project demo-reviewq`
+and point `site/reviews-config.json` at
+`{ "firebase": { "apiKey": "x", "authDomain": "localhost", "projectId": "demo-reviewq", "appId": "x", "emulators": true } }`.

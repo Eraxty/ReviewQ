@@ -3,7 +3,7 @@
 import os
 import time
 
-from flask import Flask, jsonify
+from flask import Flask, Response, abort, jsonify
 
 import crawler
 from snapshot import build
@@ -25,6 +25,15 @@ def queue():
         _cache["body"] = build()
         _cache["at"] = time.time()
     return jsonify(_cache["body"])
+
+
+@app.get("/p/<int:pid>.json")
+def project_details(pid: int):
+    with crawler.connect() as conn:
+        row = conn.execute("select json from details where id = ?", (pid,)).fetchone()
+    if row is None:
+        abort(404)
+    return Response(row["json"], mimetype="application/json")
 
 
 crawler.init_db()
