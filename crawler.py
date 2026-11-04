@@ -254,8 +254,13 @@ def due_ids() -> list[int]:
     return [-neg for _, neg in sorted(due)]
 
 
-def sweep(log=print) -> int:
-    ids = due_ids()
+def sweep(log=print, budget_seconds: float | None = None) -> int:
+    due = due_ids()
+    ids = due
+    if budget_seconds is not None:
+        # Due ids come queued-first, so a capped run still covers the queue
+        # and leaves the rest of the drafts for the next run.
+        ids = due[: int(budget_seconds * REQUESTS_PER_SECOND)]
     if not ids:
         return 0
     started = time.time()
@@ -265,11 +270,14 @@ def sweep(log=print) -> int:
         for i, _ in enumerate(pool.map(probe, ids), 1):
             if i % 250 == 0:
                 log(f"[crawler] {i}/{len(ids)} probed")
-    with connect() as conn:
-        conn.execute(
-            "insert or replace into meta (key, value) values ('last_sweep', ?)",
-            (datetime.now(timezone.utc).isoformat(),),
-        )
+    if len(ids) == len(due):
+        # Only a pass that covered everything due counts; the first one ends
+        # the initial crawl (snapshot.build reports "crawling" until then).
+        with connect() as conn:
+            conn.execute(
+                "insert or replace into meta (key, value) values ('last_sweep', ?)",
+                (datetime.now(timezone.utc).isoformat(),),
+            )
     if len(ids) > 50:
         log(f"[crawler] sweep of {len(ids)} ids done in {time.time() - started:.0f}s")
     return len(ids)
@@ -291,6 +299,18 @@ def start_background(log=print) -> threading.Thread:
     return t
 
 
+def checkpoint() -> None:
+    """Fold the write-ahead log into pixl.db so the file can be copied alone."""
+    with connect() as conn:
+        conn.execute("pragma wal_checkpoint(truncate)")
+
+
 if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="One crawl pass over the Pixl project API.")
+    parser.add_argument("--budget", type=float, help="stop after about this many seconds of requests")
+    args = parser.parse_args()
     init_db()
-    sweep()
+    sweep(budget_seconds=args.budget)
+    checkpoint()

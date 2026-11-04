@@ -1,0 +1,72 @@
+name: Update queue
+
+# Pages only serves static files, so this crawls the Pixl API on a schedule,
+# writes queue.json next to the site and deploys both. The crawler's database
+# (probe schedule and first-seen ship times) lives on the `state` branch
+# between runs.
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write # push the state branch
+  pages: write
+  id-token: write
+
+# Never two crawls at once: they would double the request rate and race on
+# the state branch.
+concurrency:
+  group: update-queue
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Restore crawl state
+        run: |
+          mkdir -p data
+          if git fetch --depth=1 origin state; then
+            git show FETCH_HEAD:pixl.db > data/pixl.db
+          else
+            echo "No state branch yet, starting a full crawl."
+          fi
+
+      - name: Crawl
+        run: python crawler.py --budget 420
+
+      - name: Save crawl state
+        run: |
+          blob=$(git hash-object -w data/pixl.db)
+          tree=$(printf '100644 blob %s\tpixl.db\n' "$blob" | git mktree)
+          commit=$(git -c user.name="github-actions[bot]" \
+            -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit-tree "$tree" -m "Crawl state")
+          # One commit, force-pushed, so the branch never grows.
+          git push --force origin "$commit:refs/heads/state"
+
+      - name: Build site
+        run: python export.py _site
+
+      - uses: actions/configure-pages@v6
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+
+      - id: deploy
+        uses: actions/deploy-pages@v5

@@ -203,21 +203,27 @@ function render() {
   renderCallout(term, term ? waitingHits : [], term ? finalHits : []);
 }
 
+// Snapshots older than this mean the updater has stopped running.
+const STALE_MINUTES = 45;
+
+function minutesAgo(iso) {
+  return Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60000));
+}
+
 async function refresh() {
   try {
-    const res = await fetch("/api/queue");
+    const res = await fetch("queue.json", { cache: "no-store" });
     data = await res.json();
+    const mins = minutesAgo(data.generated_at);
+    const stale = mins > STALE_MINUTES;
     if (data.crawling) {
       $("updated").textContent = `First scan of Pixl's projects is still running (${data.probed} of ~${data.top_id} checked). The list fills in as it goes.`;
-      $("live").classList.remove("on");
-      $("live-text").textContent = "Scanning";
     } else {
-      const at = data.queue_checked_at ? data.queue_checked_at * 1000 : Date.now();
-      const mins = Math.max(1, Math.ceil((Date.now() - at) / 60000));
-      $("updated").textContent = `Every queued project was re-checked in the last ${mins} min. This page refreshes itself every minute.`;
-      $("live").classList.add("on");
-      $("live-text").textContent = "Live";
+      const when = mins < 1 ? "just now" : `${mins} min ago`;
+      $("updated").textContent = `Updated ${when}. The queue is re-checked about every 10 minutes and this page reloads the data every 2.`;
     }
+    $("live").classList.toggle("on", !stale && !data.crawling);
+    $("live-text").textContent = data.crawling ? "Scanning" : stale ? `Updated ${Math.round(mins / 60)}h ago` : "Live";
     render();
   } catch {
     $("updated").textContent = "Couldn't load the queue. Try refreshing.";
@@ -240,5 +246,5 @@ document.addEventListener("DOMContentLoaded", () => {
 
   render();
   refresh();
-  setInterval(refresh, 60 * 1000);
+  setInterval(refresh, 2 * 60 * 1000);
 });

@@ -4,24 +4,37 @@ ts vibecoded dont blame me if smthin breaks
 
 Review queue for Pixl: an unofficial live view of every project waiting for
 its first review, longest wait at the top, so makers can find their position.
-Reviewers can only open the top 15 of each queue, so the site marks those as
-open for review and shows how many spots the rest still need to move up.
+Reviewers can only open the top 15 of each queue, so the site marks where
+that cutoff is and tells makers how many spots they still need to move up.
 
-## Run
+Live at **https://eraxty.github.io/ReviewQ/**
+
+## How it's hosted
+
+GitHub Pages only serves static files, and Pixl's API rejects browser
+requests from other sites, so the page can't call it directly. Instead
+`.github/workflows/pages.yml` runs every ~10 minutes:
+
+1. restores the crawler database from the `state` branch,
+2. runs `python crawler.py --budget 420` (queued projects first),
+3. force-pushes the database back to `state` as a single commit,
+4. runs `python export.py _site` (the `site/` files plus `queue.json`) and
+   deploys it to Pages.
+
+The crawler and exporter only use the Python standard library. GitHub can
+delay scheduled runs, and it pauses schedules in repos with no activity for 60
+days; re-enable the workflow from the Actions tab if that happens.
+
+## Run locally
 
 ```bash
 uv venv && uv pip install -r requirements.txt   # or: python -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python app.py                          # http://localhost:5000
 ```
 
-Production: run **one** process so only one crawler runs:
-
-```bash
-.venv/bin/gunicorn -w 1 --threads 8 -b 0.0.0.0:5000 app:app
-```
-
-Or set `PIXL_WAIT_NO_CRAWL=1` on the web process and run `python crawler.py`
-separately (it does one pass and exits, so run it from cron/a timer).
+`app.py` serves the same `site/` folder plus a live `/queue.json`, with the
+crawler running in the background. Don't run it while the Action is also
+crawling unless you're fine with double the requests to Pixl.
 
 ## Where the data comes from
 
