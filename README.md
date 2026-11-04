@@ -1,5 +1,7 @@
 # ReviewQ
 
+ts vibecoded dont blame me if smthin breaks
+
 Review queue for Pixl: an unofficial live view of every project waiting for
 its first review, longest wait at the top, so makers can find their position.
 Reviewers can only open the top 15 of each queue, so the site marks those as
