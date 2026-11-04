@@ -316,6 +316,21 @@ input:focus-visible, button:focus-visible, a:focus-visible { outline: 3px solid 
 
 .foot { font-family: var(--body); font-size: 13px; font-weight: 500; color: var(--dim); padding: 0 8px; }
 .foot p { margin: 6px 0; }
+.credits {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 14px !important;
+  padding-top: 12px;
+  border-top: 2px solid var(--ink);
+  font-family: var(--display);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.credits a { color: var(--ink); text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 3px; }
+.credits a:hover { color: var(--red); }
 
 @media (max-width: 640px) {
   .head { padding: 20px 20px 0; }
