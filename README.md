@@ -113,11 +113,13 @@ Delete and Ban author buttons to every review. Only the key's SHA-256 is in
 the code (`reviews-api/lib/http.js`), or set `ADMIN_KEY_SHA256` on Vercel to
 use a different key.
 
-Deploying it: create a Vercel project with `reviews-api` as the root
-directory, add a private Blob store to it (which sets
-`BLOB_READ_WRITE_TOKEN`), deploy, and put the deployment URL in
-`site/reviews-config.json` as `{"api": "https://..."}`. Until then the review
-pages work for drafting and copying, and say posting isn't connected.
+It runs as the `reviewq-api` Vercel project at
+https://reviewq-api-eraxty.vercel.app, with a private Blob store
+(`BLOB_READ_WRITE_TOKEN`) and Vercel Authentication turned off so browsers
+can reach it. To redeploy, deploy the `reviews-api` folder to that project.
+The site finds the API through `site/reviews-config.json`; without an `api`
+there, review pages still work for drafting and copying and say posting
+isn't connected.
 
 Running it locally against a JSON file:
 

@@ -1,5 +1,5 @@
 // POST /api/admin {admin, action: "check" | "delete" | "ban", project?, author?}
-// Moderation with the ADMIN_KEY environment variable.
+// Moderation with the admin key; only its SHA-256 is stored (lib/http.js).
 
 import { storage } from "../lib/store.js";
 import { body, failure, isAdmin, json, preflight, rateLimit } from "../lib/http.js";
