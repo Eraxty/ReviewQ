@@ -15,8 +15,9 @@ export async function GET(request) {
     const project = new URL(request.url).searchParams.get("project") || "";
     if (!validProjectId(project)) throw new HttpError(400, "Bad project id.");
     const db = (await readFresh())?.data || emptyDb();
-    // A few seconds at the edge keeps reads cheap; posters get fresh data back from their POST.
-    return json({ reviews: reviewsFor(db, project) }, { cache: "public, s-maxage=5, stale-while-revalidate=30" });
+    // A few seconds at the edge keeps reads cheap without showing anyone a
+    // list more than ~10 s old; posters get fresh data back from their POST.
+    return json({ reviews: reviewsFor(db, project) }, { cache: "public, s-maxage=8" });
   } catch (e) {
     return failure(e);
   }

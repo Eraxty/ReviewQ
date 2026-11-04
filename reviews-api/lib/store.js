@@ -26,4 +26,4 @@ function fileStorage(path) {
 }
 
 export const storage = process.env.REVIEWS_FILE ? fileStorage(process.env.REVIEWS_FILE) : blobStorage;
-export const readFresh = () => storage.read({ maxAgeMs: 3000 });
+export const readFresh = () => storage.read({ maxAgeMs: 5000 });

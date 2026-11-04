@@ -11,7 +11,7 @@ export function OPTIONS() {
 export async function GET() {
   try {
     const db = (await readFresh())?.data || emptyDb();
-    return json({ counts: counts(db) }, { cache: "public, s-maxage=60, stale-while-revalidate=300" });
+    return json({ counts: counts(db) }, { cache: "public, s-maxage=20" });
   } catch (e) {
     return failure(e);
   }
