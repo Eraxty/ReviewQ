@@ -477,8 +477,17 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--red); outline-o
 .chip.tier { background: var(--chip-tier); }
 .chip.resub { background: var(--chip-resub); }
 .chip.peak { background: var(--chip-peak); }
-.chip.talk { display: inline-flex; align-items: center; gap: 4px; background: var(--red); color: #fff; border-color: var(--border); }
-.chip.talk .icon { width: 11px; height: 11px; fill: currentColor; }
+.chip.reviewed {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--ink);
+  color: var(--paper);
+  text-decoration: none;
+  transition: transform 0.2s var(--ease-pop);
+}
+.chip.reviewed:hover { transform: rotate(-3deg) scale(1.06); }
+.chip.reviewed .icon { width: 11px; height: 11px; fill: currentColor; }
 
 .wait { text-align: right; font-family: var(--body); white-space: nowrap; }
 .wait b { display: block; font-size: 20px; font-weight: 700; line-height: 1.1; }

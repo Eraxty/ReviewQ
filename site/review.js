@@ -724,24 +724,24 @@ function commitsTab() {
 }
 
 function readmeCss() {
-  const css = getComputedStyle(document.querySelector(".admin-shell"));
+  const css = getComputedStyle(document.documentElement);
   const v = (name) => css.getPropertyValue(name).trim();
   return `
-    :root { color-scheme: ${document.documentElement.dataset.theme === "light" ? "light" : "dark"}; }
-    body { margin: 0; padding: 16px 20px; font: 15px/1.6 "Phantom Sans", system-ui, sans-serif; color: ${v("--text")}; background: ${v("--surface")}; overflow-wrap: anywhere; }
-    a { color: ${v("--accent")}; }
+    :root { color-scheme: ${document.documentElement.dataset.theme === "dark" ? "dark" : "light"}; }
+    body { margin: 0; padding: 16px 20px; font: 15px/1.6 "DM Sans", system-ui, sans-serif; color: ${v("--ink")}; background: ${v("--paper")}; overflow-wrap: anywhere; }
+    a { color: ${v("--red")}; font-weight: 600; }
     img { max-width: 100%; height: auto; }
     h1, h2, h3 { line-height: 1.25; margin: 1.2em 0 0.5em; }
     h1:first-child, h2:first-child { margin-top: 0; }
-    h1, h2 { padding-bottom: 0.3em; border-bottom: 1px solid ${v("--border")}; }
-    pre, code { font: 13px/1.5 "JetBrains Mono", ui-monospace, Menlo, monospace; background: ${v("--sunken")}; border-radius: 6px; }
+    h1, h2 { padding-bottom: 0.3em; border-bottom: 2px solid ${v("--border")}; }
+    pre, code { font: 13px/1.5 "JetBrains Mono", ui-monospace, Menlo, monospace; background: ${v("--paper-2")}; border-radius: 6px; }
     code { padding: 0.1em 0.35em; }
-    pre { padding: 12px; overflow: auto; border: 1px solid ${v("--border")}; }
+    pre { padding: 12px; overflow: auto; border: 2px solid ${v("--border")}; }
     pre code { padding: 0; background: none; }
     table { border-collapse: collapse; display: block; overflow: auto; }
-    td, th { border: 1px solid ${v("--border")}; padding: 4px 10px; }
-    blockquote { margin: 0; padding: 0 1em; border-left: 3px solid ${v("--border-strong")}; color: ${v("--muted")}; }
-    hr { border: 0; border-top: 1px solid ${v("--border")}; }
+    td, th { border: 1.5px solid ${v("--border")}; padding: 4px 10px; }
+    blockquote { margin: 0; padding: 0 1em; border-left: 4px solid ${v("--faint")}; color: ${v("--dim")}; }
+    hr { border: 0; border-top: 2px solid ${v("--border")}; }
     .anchor, .octicon { display: none; }
   `;
 }

@@ -7,6 +7,7 @@ import {
   TYPES,
   copyButton,
   el,
+  fetchJSON,
   fmtDate,
   reduceMotion,
   setupTheme,
@@ -15,6 +16,23 @@ import {
 } from "./shared.js";
 
 let data = null;
+// Community review counts straight from the reviews API, so a new review
+// shows up here within a minute instead of at the next queue rebuild.
+let reviewsApi;
+let reviewCounts = null;
+
+async function refreshReviewCounts() {
+  if (reviewsApi === undefined) reviewsApi = (await fetchJSON("reviews-config.json"))?.api || null;
+  if (!reviewsApi) return;
+  const res = await fetchJSON(`${reviewsApi.replace(/\/$/, "")}/api/counts`);
+  if (res?.counts) reviewCounts = res.counts;
+}
+
+function applyReviewCounts() {
+  if (!data || !reviewCounts) return;
+  for (const q of Object.values(data.queues))
+    for (const row of [...q.waiting, ...q.final_checks]) row.community_reviews = reviewCounts[row.id] || 0;
+}
 let queue = new URLSearchParams(location.search).get("queue") === "hardware" ? "hardware" : "software";
 
 const reviewUrl = (id) => `review.html?id=${encodeURIComponent(id)}`;
@@ -35,10 +53,14 @@ function itemEl(row, pos, { hit = false, gated = false } = {}) {
     row.is_peak ? el("span", { class: "chip peak" }, "Beacon pick") : null,
     row.community_reviews
       ? el(
-          "span",
-          { class: "chip talk", title: `${row.community_reviews} community review${row.community_reviews === 1 ? "" : "s"}` },
+          "a",
+          {
+            class: "chip reviewed",
+            href: reviewUrl(row.id),
+            title: `${row.community_reviews} anonymous community review${row.community_reviews === 1 ? "" : "s"} on its review page. Not official: only Pixl's reviewers can approve a project.`,
+          },
           svgIcon(ICONS.chat),
-          String(row.community_reviews),
+          `Unofficially reviewed${row.community_reviews > 1 ? ` \u00d7${row.community_reviews}` : ""}`,
         )
       : null,
     el("span", {}, row.owner_name ? `@${row.owner_name}` : ""),
@@ -212,6 +234,9 @@ function renderCallout(term, waitingHits, finalHits) {
           ? `You're in the top ${OPEN_COUNT}, so reviewers can open your project right now. Waiting ${waitText(row)}. ${aheadText}`
           : `Locked for now: ${toGo} more project${toGo === 1 ? "" : "s"} need to be reviewed before you reach the top ${OPEN_COUNT} and reviewers can open it. Waiting ${waitText(row)}. ${aheadText}`,
         deltaEl(rememberPosition(row.id, pos), pos),
+        row.community_reviews
+          ? `It has ${row.community_reviews} unofficial community review${row.community_reviews === 1 ? "" : "s"}. They don't count until a Pixl reviewer checks it.`
+          : null,
       ],
       action: actions(row.id),
       extra: (fresh) => trackEls(pos, total, fresh),
@@ -307,8 +332,9 @@ function minutesAgo(iso) {
 async function refresh() {
   const first = data === null;
   try {
-    const res = await fetch("queue.json", { cache: "no-store" });
+    const [res] = await Promise.all([fetch("queue.json", { cache: "no-store" }), refreshReviewCounts()]);
     data = await res.json();
+    applyReviewCounts();
     const mins = minutesAgo(data.generated_at);
     const stale = mins > STALE_MINUTES;
     if (data.crawling) {
