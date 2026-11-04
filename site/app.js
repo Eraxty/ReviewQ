@@ -20,12 +20,65 @@ let data = null;
 // shows up here within a minute instead of at the next queue rebuild.
 let reviewsApi;
 let reviewCounts = null;
+let leaders = null;
+let board = "all";
+let leadersOpen = false;
 
 async function refreshReviewCounts() {
-  if (reviewsApi === undefined) reviewsApi = (await fetchJSON("reviews-config.json"))?.api || null;
+  if (reviewsApi === undefined) reviewsApi = (await fetchJSON("reviews-config.json"))?.api?.replace(/\/$/, "") || null;
   if (!reviewsApi) return;
-  const res = await fetchJSON(`${reviewsApi.replace(/\/$/, "")}/api/counts`);
-  if (res?.counts) reviewCounts = res.counts;
+  const [counts, ranking] = await Promise.all([fetchJSON(`${reviewsApi}/api/counts`), fetchJSON(`${reviewsApi}/api/leaderboard`)]);
+  if (counts?.counts) reviewCounts = counts.counts;
+  if (ranking?.all) leaders = ranking;
+}
+
+function leaderEl(p, i) {
+  const count = board === "week" ? p.week : p.reviews;
+  const avatar = /^https:\/\//.test(p.avatar || "")
+    ? el("img", { class: "thumb leader-avatar", src: p.avatar, alt: "", loading: "lazy" })
+    : el("div", { class: "thumb leader-avatar" });
+  const li = el(
+    "li",
+    { class: `item leader${i < 3 ? ` top${i + 1}` : ""}` },
+    el("span", { class: "pos" }, String(i + 1)),
+    avatar,
+    el(
+      "div",
+      { class: "info" },
+      el("a", { class: "title", href: `https://github.com/${encodeURIComponent(p.login)}`, target: "_blank", rel: "noopener" }, p.name || p.login),
+      el(
+        "div",
+        { class: "meta" },
+        el("span", {}, `@${p.login}`),
+        p.approved ? el("span", { class: "chip" }, `${p.approved} approved`) : null,
+        p.needs_changes ? el("span", { class: "chip" }, `${p.needs_changes} sent back`) : null,
+        p.ban ? el("span", { class: "chip" }, `${p.ban} rejected`) : null,
+      ),
+    ),
+    el("div", { class: "wait" }, el("b", {}, String(count)), el("small", {}, count === 1 ? "review" : "reviews")),
+  );
+  li.style.setProperty("--i", i);
+  return li;
+}
+
+function renderLeaders(animate = false) {
+  const card = $("leaders-card");
+  card.hidden = !reviewsApi;
+  if (!reviewsApi) return;
+  card.querySelectorAll(".tabs button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.board === board)));
+  const list = leaders?.[board] || [];
+  const shown = leadersOpen ? list : list.slice(0, 5);
+  const box = $("leaders");
+  box.classList.remove("enter");
+  box.replaceChildren(
+    ...(shown.length
+      ? shown.map(leaderEl)
+      : [el("li", { class: "empty" }, leaders ? (board === "week" ? "No reviews this week yet. Be the first." : "Nobody yet. Be the first.") : "Loading...")]),
+  );
+  if (animate) box.classList.add("enter");
+  const more = $("leaders-more");
+  more.hidden = list.length <= 5;
+  more.textContent = leadersOpen ? "Show the top 5" : `Show the top ${list.length}`;
 }
 
 function applyReviewCounts() {
@@ -57,7 +110,7 @@ function itemEl(row, pos, { hit = false, gated = false } = {}) {
           {
             class: "chip reviewed",
             href: reviewUrl(row.id),
-            title: `${row.community_reviews} anonymous community review${row.community_reviews === 1 ? "" : "s"} on its review page. Not official: only Pixl's reviewers can approve a project.`,
+            title: `${row.community_reviews} community review${row.community_reviews === 1 ? "" : "s"} on its review page. Not official: only Pixl's reviewers can approve a project.`,
           },
           svgIcon(ICONS.chat),
           `Unofficially reviewed${row.community_reviews > 1 ? ` \u00d7${row.community_reviews}` : ""}`,
@@ -308,7 +361,7 @@ function renderPipeline() {
 }
 
 function render(animate = false) {
-  document.querySelectorAll(".tabs button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.queue === queue)));
+  document.querySelectorAll(".tabs button[data-queue]").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.queue === queue)));
   if (!data) return;
   const q = data.queues[queue];
   const term = $("search").value.trim();
@@ -317,6 +370,7 @@ function render(animate = false) {
   countTo($("c-software"), data.queues.software.waiting.length);
   countTo($("c-hardware"), data.queues.hardware.waiting.length);
 
+  renderLeaders(animate);
   const waitingHits = fillList($("waiting"), q.waiting, term, "Nothing waiting. Queue's clear.", true, animate);
   const finalHits = fillList($("final"), q.final_checks, term, "Nothing in final checks.", false, animate);
   renderCallout(term, term ? waitingHits : [], term ? finalHits : []);
@@ -364,13 +418,23 @@ document.addEventListener("DOMContentLoaded", () => {
 
   setupTheme();
 
-  document.querySelectorAll(".tabs button").forEach((b) =>
+  document.querySelectorAll(".tabs button[data-queue]").forEach((b) =>
     b.addEventListener("click", () => {
       if (queue === b.dataset.queue) return;
       queue = b.dataset.queue;
       render(true);
     }),
   );
+  document.querySelectorAll(".tabs button[data-board]").forEach((b) =>
+    b.addEventListener("click", () => {
+      board = b.dataset.board;
+      renderLeaders(true);
+    }),
+  );
+  $("leaders-more").addEventListener("click", () => {
+    leadersOpen = !leadersOpen;
+    renderLeaders(leadersOpen);
+  });
   $("search").addEventListener("input", () => render(false));
   $("search").addEventListener("keydown", (e) => {
     if (e.key === "Escape") {

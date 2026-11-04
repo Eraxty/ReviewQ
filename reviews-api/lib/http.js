@@ -20,6 +20,17 @@ export function json(body, { status = 200, cache = "no-store" } = {}) {
 
 export const preflight = () => new Response(null, { status: 204, headers: CORS });
 
+// Sign-in only ever sends people back to the site (or a local copy of it).
+export function returnUrl(value) {
+  try {
+    const url = new URL(value);
+    url.hash = "";
+    const local = url.protocol === "http:" && ["localhost", "127.0.0.1"].includes(url.hostname);
+    if (local || url.href.startsWith(`${SITE}/`)) return url.href;
+  } catch {}
+  return `${SITE}/`;
+}
+
 export function failure(e) {
   if (e instanceof HttpError) return json({ error: e.message }, { status: e.status });
   console.error(e);

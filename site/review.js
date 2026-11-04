@@ -1,6 +1,6 @@
 // A public copy of Pixl's review dash (apps/internal-dashboard/app/review/[id]
 // in hackclub/pixl, MIT License, Copyright (c) 2026 Pixl) for one queued
-// project, plus anonymous community reviews that real reviewers can copy.
+// project, plus community reviews (signed in with GitHub) that real reviewers can copy.
 
 import { OPEN_COUNT, TIERS, TYPES, el, fetchJSON, fmtDate, round1, setupTheme, timeAgo, waitText } from "./shared.js";
 import { PIXEL_VALUE_USD, averageUsdPerHourOver, levelForRe, pxPerHourOver, reForHours, rePerHour } from "./dash/economy.js";
@@ -8,7 +8,7 @@ import { PIXEL_VALUE_USD, averageUsdPerHourOver, levelForRe, pxPerHourOver, reFo
 const $ = (id) => document.getElementById(id);
 const id = (new URLSearchParams(location.search).get("id") || "").replace(/^#/, "").trim();
 const DRAFT_KEY = `pq-draft-${id}`;
-const KEY_KEY = "pq-key";
+const TOKEN_KEY = "pq-gh-token";
 const ADMIN_KEY = "pq-admin";
 const SPLIT_KEY = "pq-split";
 const TECHNICAL_FEATURES_MIN = 20;
@@ -96,8 +96,8 @@ const AI_AUTHOR_RX = /(^|\b)(claude|copilot|devin-ai|cursor-?agent|aider|codex|j
 let details = null;
 let claimed = 0;
 let api = null; // community reviews API base, or null when not connected
-let key = null;
-let me = null; // { author, name }
+let ghToken = null; // GitHub token from signing in (no scopes)
+let me = null; // { author, login, name, avatar } once signed in
 let adminKey = null;
 let reviews = [];
 let reviewsState = "loading"; // loading | ready | off | error
@@ -110,7 +110,7 @@ let refreshTab = () => {};
 
 const https = (url) => (/^https:\/\//.test(url || "") ? url : null);
 const mine = () => (me ? reviews.find((r) => r.author === me.author) || null : null);
-const anonName = (author) => `Anon #${String(author).slice(0, 4).toUpperCase()}`;
+const handle = (r) => (r.login ? `@${r.login}` : "someone");
 
 /* ---------- small dash components ---------- */
 
@@ -173,7 +173,7 @@ function rich(text) {
   return box;
 }
 
-// A 5x5 mirrored pixel avatar from the author id, so anonymous reviewers are
+// A 5x5 mirrored pixel avatar from the author id, for reviews without a photo, so they are
 // still easy to tell apart.
 function identicon(author, cls = "rq-identicon") {
   const canvas = el("canvas", { class: cls, width: 5, height: 5, "aria-hidden": "true" });
@@ -191,53 +191,122 @@ function identicon(author, cls = "rq-identicon") {
   return canvas;
 }
 
-/* ---------- anonymous identity ---------- */
+/* ---------- GitHub sign-in ---------- */
 
-async function sha256Hex(text) {
-  const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
-  return [...new Uint8Array(bytes)].map((b) => b.toString(16).padStart(2, "0")).join("");
+const GITHUB_MARK =
+  "M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z";
+
+function githubIcon() {
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("viewBox", "0 0 16 16");
+  svg.setAttribute("width", "16");
+  svg.setAttribute("height", "16");
+  svg.setAttribute("aria-hidden", "true");
+  const path = document.createElementNS(ns, "path");
+  path.setAttribute("fill", "currentColor");
+  path.setAttribute("d", GITHUB_MARK);
+  svg.append(path);
+  return svg;
 }
 
-async function loadIdentity() {
+// GitHub API reads, with the visitor's token when they're signed in (5,000 an
+// hour instead of 60) and a short cache so tab switches and reloads are free.
+const wrapResponse = (e) => ({
+  ok: e.status >= 200 && e.status < 300,
+  status: e.status,
+  headers: { get: (name) => (name.toLowerCase() === "link" ? e.link : null) },
+  text: async () => e.body,
+  json: async () => JSON.parse(e.body),
+});
+
+async function github(path, accept = "application/vnd.github+json") {
+  const cacheKey = `pq-gh:${accept}:${path}`;
   try {
-    key = localStorage.getItem(KEY_KEY);
+    const hit = JSON.parse(sessionStorage.getItem(cacheKey) || "null");
+    if (hit && Date.now() - hit.at < 10 * 60 * 1000) return wrapResponse(hit);
   } catch {}
-  if (!/^[0-9a-f]{64}$/.test(key || "")) {
-    key = [...crypto.getRandomValues(new Uint8Array(32))].map((b) => b.toString(16).padStart(2, "0")).join("");
+  let res;
+  try {
+    res = await fetch(`https://api.github.com${path}`, { headers: { Accept: accept, ...(ghToken ? { Authorization: `Bearer ${ghToken}` } : {}) } });
+  } catch {
+    return null;
+  }
+  if (res.status === 401 && ghToken) {
+    signOut(); // the token was revoked; carry on signed out
+    return github(path, accept);
+  }
+  const entry = { at: Date.now(), status: res.status, link: res.headers.get("Link") || "", body: await res.text() };
+  if (res.ok) {
     try {
-      localStorage.setItem(KEY_KEY, key);
+      sessionStorage.setItem(cacheKey, JSON.stringify(entry));
     } catch {}
   }
-  const author = (await sha256Hex(key)).slice(0, 16);
-  me = { author, name: anonName(author) };
+  return wrapResponse(entry);
+}
+
+async function loadGitHubUser() {
+  try {
+    ghToken = localStorage.getItem(TOKEN_KEY);
+  } catch {}
+  if (!ghToken) return;
+  const res = await fetch("https://api.github.com/user", { headers: { Authorization: `Bearer ${ghToken}`, Accept: "application/vnd.github+json" } }).catch(() => null);
+  if (res?.status === 401) return signOut();
+  if (!res?.ok) return; // GitHub unreachable: keep the token and try next time
+  const u = await res.json();
+  me = { author: `gh${u.id}`, login: u.login, name: u.name || "", avatar: u.avatar_url || "" };
+}
+
+function signIn() {
+  if (!api) return say("neutral", "Sign-in isn't connected on this copy of the site.");
+  const back = location.origin + location.pathname + location.search;
+  location.href = `${api}/api/auth/login?return=${encodeURIComponent(back)}`;
+}
+
+function signOut() {
+  ghToken = null;
+  me = null;
+  try {
+    localStorage.removeItem(TOKEN_KEY);
+  } catch {}
+  renderAccount();
+  renderIdentity();
+  updateStatus();
+  updateVerdictButtons();
+  refreshTab("community");
+}
+
+function renderAccount() {
+  const box = $("account");
+  if (!box || !details) return;
+  if (!api) return box.replaceChildren();
+  box.replaceChildren(
+    me
+      ? el(
+          "button",
+          { type: "button", class: "btn account", title: `Signed in as @${me.login}. Click to sign out.`, onclick: () => confirm("Sign out of GitHub on this site?") && signOut() },
+          https(me.avatar) ? el("img", { class: "account-avatar", src: me.avatar, alt: "" }) : githubIcon(),
+          `@${me.login}`,
+        )
+      : el("button", { type: "button", class: "btn", onclick: signIn }, githubIcon(), "Sign in"),
+  );
 }
 
 function renderIdentity() {
-  const useKey = () => {
-    const given = (prompt("Paste the reviewer key from your other device:") || "").trim().toLowerCase();
-    if (!given) return;
-    if (!/^[0-9a-f]{64}$/.test(given)) return alert("That isn't a reviewer key (64 characters, 0-9 and a-f).");
-    try {
-      localStorage.setItem(KEY_KEY, given);
-    } catch {}
-    location.reload();
-  };
   const box = $("identity");
-  box.title = "Your reviewer key lives only in this browser. Copy it to edit your reviews from another device.";
+  if (!box || !details) return;
+  if (!api) return box.replaceChildren(el("span", {}, "Posting isn't connected on this copy of the site."));
   box.replaceChildren(
-    identicon(me.author, "rq-identicon sm"),
-    el("span", {}, "Posting anonymously as ", el("b", {}, me.name)),
-    el(
-      "details",
-      {},
-      el("summary", {}, "Key"),
-      el(
-        "div",
-        { class: "rq-key-menu" },
-        copyBtn(() => key, "Copy my key", "hc-btn hc-btn-outline hc-btn-sm rq-copy"),
-        el("button", { type: "button", class: "hc-btn hc-btn-outline hc-btn-sm", onclick: useKey }, "Use a key"),
-      ),
-    ),
+    ...(me
+      ? [
+          https(me.avatar) ? el("img", { class: "hc-avatar", src: me.avatar, alt: "", width: 24, height: 24 }) : githubIcon(),
+          el("span", {}, "Posting as ", el("b", {}, me.name || me.login), ` (@${me.login})`),
+          el("button", { type: "button", class: "hc-btn hc-btn-ghost hc-btn-sm", onclick: signOut }, "Sign out"),
+        ]
+      : [
+          el("span", {}, "Sign in with GitHub to post. Your GitHub name and picture show on your review."),
+          el("button", { type: "button", class: "hc-btn hc-btn-outline hc-btn-sm", onclick: signIn }, githubIcon(), "Sign in with GitHub"),
+        ]),
   );
 }
 
@@ -313,8 +382,8 @@ function ownerCard() {
   const ghLine = el("span", { class: "hc-caption rq-xs" });
   const gh = githubRepo(p.repo_url);
   if (gh) {
-    fetch(`https://api.github.com/users/${gh.owner}`)
-      .then((r) => (r.ok ? r.json() : null))
+    github(`/users/${gh.owner}`)
+      .then((r) => (r?.ok ? r.json() : null))
       .then((u) => {
         if (!u) return;
         ghLine.replaceChildren(
@@ -486,7 +555,21 @@ function githubTrouble(res, page) {
   if (!res) return box("warning", "Couldn't reach GitHub.", open);
   if (res.status === 404) return box("danger", "Repo not found or private (404) on github.com.");
   if (res.status === 403 || res.status === 429)
-    return box("warning", "GitHub API rate limit hit. This is not “no commits”: GitHub only answers 60 requests an hour per visitor without a login. Wait a bit and reload, or open it on GitHub.", open);
+    return el(
+      "div",
+      { class: "rq-pad" },
+      callout(
+        "warning",
+        el(
+          "p",
+          {},
+          me
+            ? "GitHub's rate limit for your account is used up for now. Wait a bit and reload, or open it on GitHub."
+            : "GitHub API rate limit hit. This is not “no commits”: GitHub only answers 60 requests an hour without a login. Sign in with GitHub and it's 5,000 an hour.",
+        ),
+        el("div", { class: "rq-row" }, me || !api ? null : el("button", { type: "button", class: "hc-btn hc-btn-sm", onclick: signIn }, githubIcon(), "Sign in with GitHub"), open),
+      ),
+    );
   return box("warning", `GitHub answered ${res.status}.`, open);
 }
 
@@ -505,8 +588,9 @@ function fmtGap(s) {
 const diffs = new Map();
 function loadDiff(gh, sha) {
   if (!diffs.has(sha)) {
-    const request = fetch(`https://api.github.com/repos/${gh.owner}/${gh.repo}/commits/${sha}`)
+    const request = github(`/repos/${gh.owner}/${gh.repo}/commits/${sha}`)
       .then(async (res) => {
+        if (!res) return { error: "failed" };
         if (!res.ok) return { error: res.status === 403 || res.status === 429 ? "rate_limited" : res.status === 404 ? "not_found" : "failed" };
         const c = await res.json();
         return {
@@ -573,7 +657,7 @@ function commitsTab() {
   let nextPage = 2;
   let pageIndex = 0;
 
-  const fetchPage = (n) => fetch(`https://api.github.com/repos/${gh.owner}/${gh.repo}/commits?per_page=100&page=${n}`).catch(() => null);
+  const fetchPage = (n) => github(`/repos/${gh.owner}/${gh.repo}/commits?per_page=100&page=${n}`);
   const toCommit = (c) => {
     const message = c.commit?.message || "";
     const author = c.author?.login || c.commit?.author?.name || "?";
@@ -752,7 +836,7 @@ function readmeTab() {
   const page = `https://github.com/${gh.owner}/${gh.repo}#readme`;
   const wrap = el("div", {}, el("p", { class: "hc-caption rq-pad" }, "Loading the README from GitHub..."));
   (async () => {
-    const res = await fetch(`https://api.github.com/repos/${gh.owner}/${gh.repo}/readme`, { headers: { Accept: "application/vnd.github.html+json" } }).catch(() => null);
+    const res = await github(`/repos/${gh.owner}/${gh.repo}/readme`, "application/vnd.github.html+json");
     if (res?.status === 404) return wrap.replaceChildren(empty("No README", "This repo has no README, which most ships need."));
     if (!res || !res.ok) return wrap.replaceChildren(githubTrouble(res, page));
     const html = await res.text();
@@ -847,7 +931,7 @@ function formatReview(r) {
 }
 
 function useAsDraft(r) {
-  if (!blank(readForm()) && !confirm(`Replace your draft with ${anonName(r.author)}'s review?`)) return;
+  if (!blank(readForm()) && !confirm(`Replace your draft with ${handle(r)}'s review?`)) return;
   fillForm({ ...r, hours: Math.min(r.hours, claimed) });
   saveDraft();
   $("technical_features").focus({ preventScroll: true });
@@ -855,7 +939,7 @@ function useAsDraft(r) {
 }
 
 async function moderate(r, action) {
-  const question = action === "ban" ? `Ban ${anonName(r.author)}? Every review they wrote is deleted and their key can't post again.` : `Delete ${anonName(r.author)}'s review?`;
+  const question = action === "ban" ? `Ban ${handle(r)}? Every review they wrote is deleted and their GitHub account can't post again.` : `Delete ${handle(r)}'s review?`;
   if (!confirm(question)) return;
   try {
     const data = await callApi("/api/admin", { method: "POST", body: { admin: adminKey, action, project: id, author: r.author } });
@@ -878,8 +962,18 @@ function reviewCard(r, i) {
     el(
       "header",
       { class: "rq-review-head" },
-      identicon(r.author),
-      el("div", { class: "rq-who" }, el("strong", {}, anonName(r.author), isMine ? badge("You", "info") : null), el("small", {}, `${timeAgo(updated)}${edited ? " · edited" : ""}`)),
+      https(r.avatar) ? el("img", { class: "rq-identicon", src: r.avatar, alt: "", loading: "lazy" }) : identicon(r.author),
+      el(
+        "div",
+        { class: "rq-who" },
+        el("strong", {}, r.name || r.login || "Someone", isMine ? badge("You", "info") : null),
+        el(
+          "small",
+          {},
+          r.login ? el("a", { class: "hc-link", href: `https://github.com/${encodeURIComponent(r.login)}`, target: "_blank", rel: "noopener" }, `@${r.login}`) : null,
+          ` · ${timeAgo(updated)}${edited ? " · edited" : ""}`,
+        ),
+      ),
       badge(v.label, v.tone),
       TIERS[r.tier] ? badge(TIERS[r.tier], "purple") : null,
       badge(cut > 0 ? `${r.hours}h of ${r.claimed_hours}h · -${cut}h` : `${r.hours}h, full`, cut > 0 ? "warning" : "neutral", { "data-variant": "outline" }),
@@ -913,7 +1007,7 @@ function communityTab() {
       callout("neutral", el("p", {}, "Community reviews aren't connected on this copy of the site yet. You can still write a review in the form: it saves in this browser and every copy button works.")),
     );
   if (reviewsState === "error") return el("div", { class: "rq-pad" }, callout("warning", el("p", {}, `Couldn't load community reviews: ${reviewsError}`)));
-  if (!reviews.length) return empty("No community reviews yet", "Check the commits, README and journals, then write yours in the form. It's anonymous.");
+  if (!reviews.length) return empty("No community reviews yet", "Check the commits, README and journals, then write yours in the form and sign in with GitHub to post it.");
 
   const tally = {};
   for (const r of reviews) tally[r.verdict] = (tally[r.verdict] || 0) + 1;
@@ -925,7 +1019,7 @@ function communityTab() {
     el(
       "div",
       { class: "rq-summary" },
-      `${reviews.length} anonymous review${reviews.length === 1 ? "" : "s"}:`,
+      `${reviews.length} community review${reviews.length === 1 ? "" : "s"}:`,
       Object.entries(tally).map(([verdict, n]) => badge(`${n} ${VERDICTS[verdict]?.label || verdict}`, VERDICTS[verdict]?.tone || "neutral")),
       `median ${round1(median)}h of ${claimed}h`,
       el("span", { style: "margin-left:auto" }, "Unofficial. Double check before you copy."),
@@ -1099,6 +1193,13 @@ async function post(verdict) {
     return;
   }
   if (!api) return say("neutral", "Posting isn't connected on this copy of the site yet. Your draft is saved here and every copy button works.");
+  if (!me || !ghToken) {
+    say("neutral", "Sign in with GitHub to post. Your draft stays saved while you do.");
+    $("identity").querySelector("button")?.focus();
+    return;
+  }
+  const owner = githubRepo(details.project.repo_url)?.owner;
+  if (owner && owner.toLowerCase() === me.login.toLowerCase()) return say("danger", "That's your own repo, so you can't review this project.");
   if (!$("attest").checked) return say("danger", "Tick the box to confirm you didn't make this project and checked it yourself.");
   posting = true;
   updateVerdictButtons();
@@ -1108,7 +1209,7 @@ async function post(verdict) {
       method: "POST",
       body: {
         project: id,
-        key,
+        token: ghToken,
         review: {
           verdict,
           tier: r.tier,
@@ -1122,11 +1223,13 @@ async function post(verdict) {
     });
     reviews = data.reviews;
     reviewsState = "ready";
-    say("success", editing ? "Updated. Reviewers see the new version right away." : "Posted! Reviewers can copy it from the Community tab.");
-    celebrate(editing ? "Review updated" : "+1 review");
+    const rank = data.rank ? ` You're #${data.rank.position} of ${data.rank.of} on the reviewer leaderboard with ${data.rank.reviews} review${data.rank.reviews === 1 ? "" : "s"}.` : "";
+    say("success", (editing ? "Updated. Reviewers see the new version right away." : "Posted! Reviewers can copy it from the Community tab.") + rank);
+    celebrate(editing ? "Review updated" : data.rank ? `+1 review · #${data.rank.position}` : "+1 review");
     refreshTab("community");
   } catch (e) {
     say("danger", e.message);
+    if (/sign in again|Sign in with GitHub/i.test(e.message)) signOut();
   }
   posting = false;
   updateVerdictButtons();
@@ -1136,7 +1239,7 @@ async function post(verdict) {
 async function deleteMine() {
   if (!mine() || !confirm("Delete your posted review? Your draft stays in this browser.")) return;
   try {
-    const data = await callApi("/api/reviews", { method: "DELETE", body: { project: id, key } });
+    const data = await callApi("/api/reviews", { method: "DELETE", body: { project: id, token: ghToken } });
     reviews = data.reviews;
     say("success", "Deleted. Your draft is still here.");
     refreshTab("community");
@@ -1398,21 +1501,21 @@ function renderMissing(queue) {
 
 async function main() {
   setupTheme();
-  // A moderator opens any review page once with #admin=<key>; the key is
-  // kept in this browser and checked by the server on every action.
+  // The fragment carries the sign-in result (#gh_token, #gh_error) or, for
+  // a moderator's first visit, #admin=<key>. Keep them and clear the address bar.
   const hash = new URLSearchParams(location.hash.slice(1));
-  if (hash.get("admin")) {
-    try {
-      localStorage.setItem(ADMIN_KEY, hash.get("admin"));
-    } catch {}
-    history.replaceState(null, "", location.pathname + location.search);
-  }
+  const signInError = hash.get("gh_error");
+  try {
+    if (hash.get("gh_token")) localStorage.setItem(TOKEN_KEY, hash.get("gh_token"));
+    if (hash.get("admin")) localStorage.setItem(ADMIN_KEY, hash.get("admin"));
+  } catch {}
+  if (location.hash) history.replaceState(null, "", location.pathname + location.search);
   const valid = /^\d{1,8}$/.test(id);
   const [found, queue, config] = await Promise.all([
     valid ? fetchJSON(`p/${id}.json`) : null,
     fetchJSON("queue.json"),
     fetchJSON("reviews-config.json"),
-    loadIdentity(),
+    loadGitHubUser(),
   ]);
   if (!found?.project) return renderMissing(queue);
   details = found;
@@ -1426,7 +1529,10 @@ async function main() {
   renderLeft(queue);
   setupSplit();
   setupForm();
+  renderAccount();
   renderIdentity();
+  if (signInError)
+    say("danger", { expired: "Sign-in took too long or was opened twice. Try again.", denied: "Sign-in was cancelled." }[signInError] || "GitHub sign-in didn't work. Try again.");
   loadReviews();
   setInterval(() => document.visibilityState === "visible" && api && !posting && loadReviews(), 30000);
 

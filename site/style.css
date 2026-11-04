@@ -506,6 +506,16 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--red); outline-o
 .cutoff::before, .cutoff::after { content: ""; flex: 1; border-top: 3px dashed var(--border); }
 .cutoff span { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border: 2px solid var(--border); border-radius: 999px; background: var(--paper); }
 
+/* Top reviewers */
+.leaders { margin-bottom: 4px; }
+.leader .leader-avatar { border-radius: 50%; }
+.leader.top1 .pos { background: #facc15; color: #000; }
+.leader.top2 .pos { background: #d4d4d8; color: #000; }
+.leader.top3 .pos { background: #f0a868; color: #000; }
+.leader.top1 { border-width: 3px; box-shadow: 3px 3px 0 0 var(--shadow); }
+.leader .wait b { color: var(--ink); }
+.leaders-more { margin-top: 12px; }
+
 .skel { height: 72px; border: 2px solid var(--border); border-radius: 12px; background: var(--paper-2); animation: pulse 1.5s infinite; }
 .skel:nth-child(2) { animation-delay: 0.15s; }
 .skel:nth-child(3) { animation-delay: 0.3s; }

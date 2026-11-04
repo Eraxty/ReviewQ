@@ -223,6 +223,7 @@
 /* ---------- page ---------- */
 
 .head .unofficial { background: var(--chip-resub); }
+.head .btn svg, .hc-btn svg { flex: none; }
 .rq-main { max-width: 1480px; margin: 0 auto; padding: 18px 24px 40px; }
 .back { display: inline-block; margin-bottom: 14px; }
 .rq-left { display: flex; flex-direction: column; gap: 24px; min-width: 0; }
@@ -360,10 +361,11 @@ input.rq-hours { width: 108px; padding: 8px 10px; font-weight: 700; text-align: 
 .rq-tools { display: flex; flex-wrap: wrap; gap: 8px; }
 .rq-identity { display: flex; align-items: center; gap: 10px; font: 600 13px var(--body); color: var(--dim); }
 .rq-identity b { color: var(--ink); }
-.rq-identity details { margin-left: auto; }
-.rq-identity summary { cursor: pointer; color: var(--faint); font: 700 12px var(--body); list-style: none; text-decoration: underline; }
-.rq-identity summary::-webkit-details-marker { display: none; }
-.rq-identity .rq-key-menu { display: flex; gap: 6px; margin-top: 6px; }
+.rq-identity > button { margin-left: auto; flex: none; }
+.rq-identity .hc-avatar { width: 24px; height: 24px; }
+.account-slot:empty { display: none; }
+.head .account { padding: 6px 14px 6px 6px; }
+.account-avatar { width: 30px; height: 30px; border-radius: 50%; border: 2px solid var(--border); }
 .rq-verdicts { display: flex; flex-wrap: wrap; gap: 10px; }
 .rq-verdicts .hc-btn { flex: 1 1 auto; min-height: 46px; font-size: 15px; }
 .rq-verdicts .hc-btn[data-picked] { outline: 3px dashed var(--border); outline-offset: 3px; }

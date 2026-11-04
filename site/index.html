@@ -82,6 +82,19 @@
         <div class="callout" id="callout" aria-live="polite" hidden></div>
       </section>
 
+      <section class="card" id="leaders-card" hidden>
+        <div class="card-head">
+          <h2 class="card-title">Top reviewers</h2>
+          <div class="tabs" role="tablist" aria-label="Leaderboard">
+            <button type="button" class="btn" role="tab" data-board="all" aria-selected="true">All time</button>
+            <button type="button" class="btn" role="tab" data-board="week" aria-selected="false">This week</button>
+          </div>
+        </div>
+        <p class="note plain">Community reviewers ranked by how many queued projects they've reviewed. Open any project, write a review and sign in with GitHub to get on the board.</p>
+        <ol class="list leaders" id="leaders"></ol>
+        <button type="button" class="btn copy leaders-more" id="leaders-more" hidden>Show the top 25</button>
+      </section>
+
       <section class="card">
         <div class="card-head">
           <h2 class="card-title">Waiting for review</h2>
@@ -117,8 +130,8 @@
         </p>
         <p>
           Click a project to open its review page, a copy of Pixl's review dash with everything public about it
-          (README, commits, journals, past reviews) and anonymous community reviews anyone can write. Community
-          reviews are unofficial; only Pixl's reviewers can approve a project.
+          (README, commits, journals, past reviews) and community reviews anyone can post after signing in with
+          GitHub. Community reviews are unofficial; only Pixl's reviewers can approve a project.
         </p>
         <p>Data comes from Pixl's public API. Unofficial, not made by or affiliated with Hack Club.</p>
         <p class="credits">

@@ -19,9 +19,12 @@ features, why lower the hours, additional notes, note to the player with the
 `/ai`, `/badreadme`... macros) with the verdict buttons at the bottom. Drafts
 autosave in the browser and every field has a copy button.
 
-Posting a review is anonymous: each browser makes a random key and shows up as
-something like "Anon #3F9A". Real reviewers can copy what checks out into the
-dash and double check it there. Community reviews are unofficial.
+Posting a review needs a GitHub sign-in, so every review shows who wrote it,
+and signed-in visitors' GitHub requests (README, commits, diffs) run on their
+own 5,000-an-hour limit instead of the shared 60. Real reviewers can copy what
+checks out into the dash and double check it there. Community reviews are
+unofficial. The queue page tags projects that have been unofficially reviewed
+and has a leaderboard of the top community reviewers, all time and this week.
 
 ## How it's hosted
 
@@ -93,30 +96,36 @@ people posting at once can't overwrite each other.
 | Endpoint | What it does |
 |---|---|
 | `GET /api/reviews?project=618` | The project's reviews, newest first (cached 5 s at the edge) |
-| `POST /api/reviews {project, key, review}` | Post or edit your review |
-| `DELETE /api/reviews {project, key}` | Delete your review |
-| `GET /api/counts` | Reviews per project, read by `export.py` for the queue page |
+| `POST /api/reviews {project, token, review}` | Post or edit your review |
+| `DELETE /api/reviews {project, token}` | Delete your review |
+| `GET /api/counts` | Reviews per project, for the queue page's tags |
+| `GET /api/leaderboard` | Top 25 reviewers, all time and this week |
+| `GET /api/auth/login?return=<page>` | Starts GitHub sign-in |
+| `GET /api/auth/callback` | GitHub sends people back here |
 | `POST /api/admin {admin, action, project, author}` | `check`, `delete` someone's review, or `ban` their key |
 
-Nobody signs in. The browser keeps a random 256-bit key in localStorage and
-the review's author id is the first 16 hex characters of its SHA-256, so a key
-can edit or delete only its own reviews and the id says nothing about who
-wrote it. Reviewers can copy their key to another device from the form. The
-server only accepts reviews for projects that are in the queue right now
-(`p/<id>.json` on the site), takes the claimed hours from Pixl's data rather
-than the browser, checks the same things the dash's form does, and limits
-each address to 30 writes per 10 minutes.
+Sign-in is a GitHub OAuth app asking for no scopes, so the token can only
+read public data. The API swaps the code for a token with the app's secret and
+sends the token back to the review page in the URL fragment; the page keeps it
+in localStorage. Posting sends the token, the API asks GitHub whose it is, and
+the review is stored under that GitHub user id with their login, name and
+avatar, one review per person per project. Nobody can review a project whose
+repo they own. The server only accepts reviews for projects that are in the
+queue right now (`p/<id>.json` on the site), takes the claimed hours from
+Pixl's data rather than the browser, checks the same things the dash's form
+does, and limits each address to 30 writes per 10 minutes.
 
 Moderation: open any review page once as `review.html?id=<id>#admin=<key>`.
 The key stays in that browser (it's removed from the address bar) and adds
-Delete and Ban author buttons to every review. Only the key's SHA-256 is in
+Delete and Ban author buttons to every review. A ban is by GitHub user id. Only the key's SHA-256 is in
 the code (`reviews-api/lib/http.js`), or set `ADMIN_KEY_SHA256` on Vercel to
 use a different key.
 
 It runs as the `reviewq-api` Vercel project at
 https://reviewq-api-eraxty.vercel.app, with a private Blob store
-(`BLOB_READ_WRITE_TOKEN`) and Vercel Authentication turned off so browsers
-can reach it. To redeploy, deploy the `reviews-api` folder to that project.
+(`BLOB_READ_WRITE_TOKEN`), the GitHub OAuth app's `GITHUB_CLIENT_ID` and
+`GITHUB_CLIENT_SECRET` (callback `https://reviewq-api-eraxty.vercel.app/api/auth/callback`),
+and Vercel Authentication turned off so browsers can reach it. To redeploy, deploy the `reviews-api` folder to that project.
 The site finds the API through `site/reviews-config.json`; without an `api`
 there, review pages still work for drafting and copying and say posting
 isn't connected.

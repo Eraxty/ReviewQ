@@ -1,11 +1,7 @@
 // Community reviews, stored as one JSON document:
 //   { reviews: { "<projectId>": [review, ...] }, banned: ["<author>", ...] }
-// Nobody signs in. Each browser makes a random key and keeps it; the author id
-// shown on a review is the first 16 hex characters of sha256(key), so a key
-// can edit or delete its own reviews and nothing else, and the id says
-// nothing about who wrote it.
-
-import { createHash } from "node:crypto";
+// Reviewers sign in with GitHub. A review's author is "gh<GitHub user id>",
+// which survives username changes, plus the login, name and avatar to show.
 
 export const VERDICTS = ["approved", "needs_changes", "ban"];
 export const TECHNICAL_FEATURES_MIN = 20;
@@ -21,10 +17,7 @@ export class HttpError extends Error {
 
 export class Conflict extends Error {}
 
-export function authorFor(key) {
-  if (typeof key !== "string" || !/^[0-9a-f]{64}$/.test(key)) throw new HttpError(400, "Bad reviewer key.");
-  return createHash("sha256").update(key).digest("hex").slice(0, 16);
-}
+export const AUTHOR_RX = /^gh\d{1,12}$/;
 
 export function validProjectId(id) {
   return typeof id === "string" && /^[0-9]{1,8}$/.test(id);
@@ -75,10 +68,39 @@ export function counts(db) {
   return out;
 }
 
+// Reviewers ranked by how many projects they've reviewed, all time and in
+// the last 7 days. Ties go to whoever reviewed most recently.
+export function leaderboard(db, now = new Date(), limit = 25) {
+  const weekAgo = new Date(now.getTime() - 7 * 86400000).toISOString();
+  const people = new Map();
+  for (const list of Object.values(db.reviews)) {
+    for (const r of list) {
+      if (!r.login) continue;
+      const p = people.get(r.author) || { author: r.author, login: r.login, name: "", avatar: "", reviews: 0, week: 0, approved: 0, needs_changes: 0, ban: 0, last: "" };
+      p.reviews++;
+      if (r.created_at > weekAgo) p.week++;
+      p[r.verdict] = (p[r.verdict] || 0) + 1;
+      if (r.updated_at > p.last) Object.assign(p, { last: r.updated_at, login: r.login, name: r.name || "", avatar: r.avatar || "" });
+      people.set(r.author, p);
+    }
+  }
+  const rank = (field) =>
+    [...people.values()].filter((p) => p[field] > 0).sort((a, b) => b[field] - a[field] || b.last.localeCompare(a.last));
+  const all = rank("reviews");
+  return { all: all.slice(0, limit), week: rank("week").slice(0, limit), people: all.length };
+}
+
+export function rankOf(db, author) {
+  const { all } = leaderboard(db, new Date(), Infinity);
+  const i = all.findIndex((p) => p.author === author);
+  return i < 0 ? null : { position: i + 1, reviews: all[i].reviews, of: all.length };
+}
+
 // Mutations take the current document and return the next one.
 
-export function upsert(db, projectId, author, review, now = new Date()) {
-  if (db.banned.includes(author)) throw new HttpError(403, "This reviewer key can't post any more.");
+export function upsert(db, projectId, user, review, now = new Date()) {
+  const { author } = user;
+  if (db.banned.includes(author)) throw new HttpError(403, "This GitHub account can't post reviews any more.");
   const at = now.toISOString();
   const dayAgo = new Date(now.getTime() - 86400000).toISOString();
   const today = Object.values(db.reviews)
@@ -88,7 +110,15 @@ export function upsert(db, projectId, author, review, now = new Date()) {
   const existing = list.find((r) => r.author === author);
   if (!existing && today >= MAX_REVIEWS_PER_AUTHOR_PER_DAY)
     throw new HttpError(429, "That's a lot of reviews for one day. Try again tomorrow.");
-  const next = { author, ...review, created_at: existing?.created_at || at, updated_at: at };
+  const next = {
+    author,
+    login: user.login,
+    name: user.name,
+    avatar: user.avatar,
+    ...review,
+    created_at: existing?.created_at || at,
+    updated_at: at,
+  };
   return {
     ...db,
     reviews: { ...db.reviews, [projectId]: [...list.filter((r) => r.author !== author), next] },
