@@ -4,6 +4,10 @@ name: Update queue
 # writes queue.json next to the site and deploys both. The crawler's database
 # (probe schedule and first-seen ship times) lives on the `state` branch
 # between runs.
+#
+# GitHub's scheduler is best effort and in practice fires this every 4-6
+# hours, so each run queues the next one itself (the last step). The cron
+# stays as a fallback that restarts the chain if a run ever fails to queue.
 
 on:
   schedule:
@@ -16,6 +20,7 @@ permissions:
   contents: write # push the state branch
   pages: write
   id-token: write
+  actions: write # queue the next run
 
 # Never two crawls at once: they would double the request rate and race on
 # the state branch.
@@ -31,6 +36,9 @@ jobs:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url || steps.deploy-retry.outputs.page_url }}
     steps:
+      - name: Note the start time
+        run: echo "RUN_STARTED=$(date +%s)" >> "$GITHUB_ENV"
+
       - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v7
@@ -81,3 +89,23 @@ jobs:
       - id: deploy-retry
         if: steps.deploy.outcome == 'failure'
         uses: actions/deploy-pages@v5
+
+      # Runs even when an earlier step failed, so one bad crawl doesn't stop
+      # the chain. Waits until 10 minutes after this run started to keep the
+      # same request rate as the schedule, and skips if a push or the cron
+      # already has a run waiting, so the chain never forks.
+      - name: Queue the next run
+        if: ${{ !cancelled() && github.ref == 'refs/heads/main' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          wait=$(( RUN_STARTED + 600 - $(date +%s) ))
+          if [ "$wait" -gt 0 ]; then sleep "$wait"; fi
+          waiting=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow pages.yml \
+            --limit 20 --json databaseId,status \
+            --jq "[.[] | select(.status != \"completed\" and .databaseId != $GITHUB_RUN_ID)] | length")
+          if [ "$waiting" -gt 0 ]; then
+            echo "A run is already waiting, not queuing another."
+          else
+            gh workflow run pages.yml --repo "$GITHUB_REPOSITORY" --ref main
+          fi
