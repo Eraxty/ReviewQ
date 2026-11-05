@@ -19,7 +19,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
-from queue_rules import FINAL_CHECKS, WAITING, normalize, queue_of, wait_start
+from queue_rules import FINAL_CHECKS, WAITING, is_auto_verdict, normalize, queue_of, wait_start
 
 API = "https://server.pixl.hackclub.com/api/explore/projects"
 PLAYERS_API = "https://server.pixl.hackclub.com/api/explore/players"
@@ -190,10 +190,11 @@ def public_details(data: dict) -> dict:
 def save_project(conn: sqlite3.Connection, data: dict) -> str:
     p = data["project"]
     reviews = [
-        {"verdict": r["verdict"], "created_at": r["created_at"]}
+        {"verdict": r["verdict"], "created_at": r["created_at"], "auto": is_auto_verdict(r)}
         for r in data.get("reviews") or []
         if r.get("verdict") and r.get("created_at")
     ]
+    journals = [e["created_at"] for e in data.get("entries") or [] if e.get("created_at")]
     pid = int(p["id"])
     shipped_at = p.get("shipped_at")
     if shipped_at:
@@ -206,7 +207,9 @@ def save_project(conn: sqlite3.Connection, data: dict) -> str:
             (pid, normalize(shipped_at)),
         )
     first_seen = conn.execute("select shipped_at from first_ships where id = ?", (pid,)).fetchone()
-    start, exact = wait_start(shipped_at, reviews, first_seen[0] if first_seen else None)
+    start, exact = wait_start(
+        shipped_at, reviews, first_seen[0] if first_seen else None, journals, p.get("created_at")
+    )
     owner = data.get("owner") or {}
     status = p.get("status") or "unknown"
     conn.execute(

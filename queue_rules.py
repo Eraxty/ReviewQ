@@ -12,7 +12,12 @@ things recover the first ship:
   "set once, never reset" rule as the dash's first_shipped_at;
 - for a project sent back with "needs changes", its first ship came before
   that first verdict, so the verdict time is a lower bound.
-Either one moving the start earlier marks the wait as approximate.
+- the first verdict itself is usually days after the ship, though. If it was
+  an automatic send-back, it came seconds after the ship. Otherwise makers
+  journal right before shipping, so the last journal entry before that
+  verdict is a close guess (checked against the dash on Nov 5: 75 of 83
+  projects on the exact day, up from 71).
+Any of these moving the start earlier marks the wait as approximate.
 """
 
 from datetime import datetime, timedelta, timezone
@@ -29,18 +34,39 @@ def queue_of(project_type: str | None) -> str:
     return "hardware" if project_type in HARDWARE_TYPES else "software"
 
 
+def is_auto_verdict(review: dict) -> bool:
+    """Pixl's bot sends back incomplete ships seconds after they're shipped."""
+    return "sent back automatically" in (review.get("note") or "").lower()
+
+
+def first_ship_guess(first_verdict: dict, journal_times: list[str], created_at: str | None) -> str:
+    """Best guess at the ship that the first verdict reviewed."""
+    verdict_at = normalize(first_verdict["created_at"])
+    if first_verdict.get("auto"):
+        return verdict_at
+    before = [t for t in map(normalize, journal_times) if t < verdict_at]
+    if not before:
+        return verdict_at
+    return max([max(before), *([normalize(created_at)] if created_at else [])])
+
+
 def wait_start(
-    shipped_at: str | None, reviews: list[dict], first_seen_ship: str | None = None
+    shipped_at: str | None,
+    reviews: list[dict],
+    first_seen_ship: str | None = None,
+    journal_times: list[str] = (),
+    created_at: str | None = None,
 ) -> tuple[str | None, bool]:
     """(when the queue wait started, whether that time is exact)."""
     if not shipped_at:
         return None, False
-    verdicts = sorted(reviews, key=lambda r: r["created_at"])
+    verdicts = sorted(reviews, key=lambda r: normalize(r["created_at"]))
     shipped = normalize(shipped_at)
     if any(r["verdict"] == "approved" for r in verdicts):
         # An update ship: its wait starts at this ship.
         return shipped, True
-    earlier = [r["created_at"] for r in verdicts if r["verdict"] == "needs_changes"][:1]
+    first_nc = [r for r in verdicts if r["verdict"] == "needs_changes"][:1]
+    earlier = [first_ship_guess(first_nc[0], list(journal_times), created_at)] if first_nc else []
     if first_seen_ship:
         earlier.append(first_seen_ship)
     start = min([shipped, *map(normalize, earlier)])

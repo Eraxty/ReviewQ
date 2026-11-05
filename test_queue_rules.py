@@ -23,6 +23,23 @@ class WaitStartTest(unittest.TestCase):
         reviews = [verdict("needs_changes", "2026-10-14T00:00:00Z"), verdict("needs_changes", "2026-09-18T00:00:00Z")]
         self.assertEqual(wait_start("2026-11-02T19:21:00Z", reviews), ("2026-09-18T00:00:00+00:00", False))
 
+    def test_reship_counts_from_last_journal_before_first_verdict(self):
+        # codeMate #1247: journaled Oct 17, first verdict Oct 25, the dash said 19 days on Nov 5.
+        reviews = [verdict("needs_changes", "2026-10-25T14:19:00Z")]
+        journals = ["2026-10-16T10:00:00Z", "2026-10-17T09:00:00Z", "2026-10-31T07:00:00Z"]
+        self.assertEqual(
+            wait_start("2026-10-31T07:57:00Z", reviews, journal_times=journals, created_at="2026-09-30T13:35:00Z"),
+            ("2026-10-17T09:00:00+00:00", False),
+        )
+
+    def test_automatic_send_back_is_the_ship_time(self):
+        # Sent back seconds after shipping, so older journals don't move the start.
+        reviews = [{**verdict("needs_changes", "2026-10-21T06:00:00Z"), "auto": True}]
+        self.assertEqual(
+            wait_start("2026-11-05T05:00:00Z", reviews, journal_times=["2026-10-18T00:00:00Z"]),
+            ("2026-10-21T06:00:00+00:00", False),
+        )
+
     def test_unship_and_reship_keeps_the_first_ship_seen(self):
         # Shipped Oct 26, unshipped to a draft, shipped again Oct 30: no verdict in between.
         self.assertEqual(
