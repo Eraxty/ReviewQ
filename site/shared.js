@@ -1,9 +1,6 @@
-// Helpers shared by the queue page and the review page.
+// Helpers for the queue page.
 
 export const DAY = 86400000;
-// Plain reviewers can only open this many projects from the top of each queue
-// (QUEUE_OPEN_COUNT in Pixl's internal dashboard).
-export const OPEN_COUNT = 15;
 export const TIERS = { 1: "T1 Spark", 2: "T2 Signal", 3: "T3 Grid", 4: "T4 Nexus" };
 export const TYPES = {
   web: "Web playable",

@@ -9,7 +9,7 @@
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://eraxty.github.io/ReviewQ/">
   <meta property="og:title" content="Pixl queue">
-  <meta property="og:description" content="Where's your Pixl project in the review queue? Live positions, wait times and the top-15 cutoff.">
+  <meta property="og:description" content="Where's your Pixl project in the review queue? Live positions and wait times.">
   <meta name="twitter:card" content="summary">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <script>
@@ -90,10 +90,6 @@
             <button type="button" class="btn" role="tab" data-queue="hardware" aria-selected="false">Hardware <span class="count" id="c-hardware"></span></button>
           </div>
         </div>
-        <p class="note">
-          <svg class="lock" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 7V5a3.5 3.5 0 0 1 7 0v2h.5A1 1 0 0 1 13 8v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h.5zm1.5 0h4V5a2 2 0 1 0-4 0v2z"/></svg>
-          <span><strong>Reviewers can only open the top 15</strong> in each queue. Everything below is locked until it moves up, so the queue gets reviewed in order.</span>
-        </p>
         <ol class="list" id="waiting"><li class="skel"></li><li class="skel"></li><li class="skel"></li><li class="skel"></li></ol>
       </section>
 
@@ -110,10 +106,6 @@
           changes", or after the maker unshipped it), only the latest ship date is public. The wait then counts from the
           earliest ship this site has seen, or is estimated from its review history and journals, and is marked with a +. Its real wait can
           be a bit longer, so it may sit a little higher in the real queue.
-        </p>
-        <p>
-          The top-15 line is approximate: projects reserved for or claimed by a reviewer don't use up a slot, and Pixl
-          owners and reviewers with full queue access can open any project.
         </p>
         <p>Data comes from Pixl's public API. Unofficial, not made by or affiliated with Hack Club.</p>
         <p class="credits">

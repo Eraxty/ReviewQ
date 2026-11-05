@@ -1,17 +1,13 @@
 import {
   $,
   DAY,
-  ICONS,
-  OPEN_COUNT,
   TIERS,
   TYPES,
   copyButton,
   el,
-  fetchJSON,
   fmtDate,
   reduceMotion,
   setupTheme,
-  svgIcon,
   waitText,
 } from "./shared.js";
 
@@ -19,8 +15,7 @@ let data = null;
 let queue = new URLSearchParams(location.search).get("queue") === "hardware" ? "hardware" : "software";
 
 // `pos` is the queue position, or null for lists without an order that matters.
-function itemEl(row, pos, { hit = false, gated = false } = {}) {
-  const open = gated && pos <= OPEN_COUNT;
+function itemEl(row, pos, { hit = false } = {}) {
   const thumb = /^https:\/\//.test(row.image_url || "")
     ? el("img", { class: "thumb", src: row.image_url, alt: "", loading: "lazy", referrerpolicy: "no-referrer" })
     : el("div", { class: "thumb" });
@@ -41,7 +36,7 @@ function itemEl(row, pos, { hit = false, gated = false } = {}) {
     el("small", {}, `shipped ${fmtDate(row.shipped_at)}`),
   );
   if (!row.wait_exact) wait.title = "At least this long. The first ship date of a resubmitted project isn't public, so this is estimated.";
-  const cls = ["item", hit && "hit", gated && (open ? "open" : "locked")].filter(Boolean).join(" ");
+  const cls = ["item", hit && "hit"].filter(Boolean).join(" ");
   return el(
     "li",
     { class: cls },
@@ -57,14 +52,6 @@ function itemEl(row, pos, { hit = false, gated = false } = {}) {
   );
 }
 
-function cutoffEl() {
-  return el(
-    "li",
-    { class: "cutoff", "aria-label": `Reviewers can only open the top ${OPEN_COUNT}. Projects below are locked.` },
-    el("span", {}, svgIcon(ICONS.lock, { cls: "lock" }), `Locked below: reviewers can only open the top ${OPEN_COUNT}`),
-  );
-}
-
 function matches(row, term) {
   if (!term) return true;
   const t = term.toLowerCase().replace(/^@/, "");
@@ -73,7 +60,7 @@ function matches(row, term) {
   return row.name.toLowerCase().includes(t) || (row.owner_name || "").toLowerCase().includes(t);
 }
 
-function fillList(list, rows, term, emptyText, gated, animate) {
+function fillList(list, rows, term, emptyText, animate) {
   list.classList.remove("enter");
   const shown = rows.map((r, i) => [r, i + 1]).filter(([r]) => matches(r, term));
   if (!shown.length) {
@@ -82,8 +69,7 @@ function fillList(list, rows, term, emptyText, gated, animate) {
   }
   const items = [];
   for (const [r, pos] of shown) {
-    if (gated && !term && pos === OPEN_COUNT + 1) items.push(cutoffEl());
-    items.push(itemEl(r, pos, { hit: !!term, gated }));
+    items.push(itemEl(r, pos, { hit: !!term }));
   }
   // Stagger the entrance down the first couple dozen rows; the rest arrive together.
   items.forEach((li, i) => li.style.setProperty("--i", Math.min(i, 24)));
@@ -140,9 +126,6 @@ function deltaEl(prev, pos) {
 
 function trackEls(pos, total, animate) {
   const at = `${Math.min(100, ((pos - 0.5) / total) * 100)}%`;
-  const open = el("div", { class: "track-open" });
-  open.style.width = `${(Math.min(OPEN_COUNT, total) / total) * 100}%`;
-  if (total > OPEN_COUNT) open.append(el("span", {}, `top ${OPEN_COUNT}`));
   const dot = el("div", { class: "track-dot" });
   if (animate && !reduceMotion) {
     requestAnimationFrame(() => requestAnimationFrame(() => (dot.style.left = at)));
@@ -151,7 +134,7 @@ function trackEls(pos, total, animate) {
     dot.style.left = at;
   }
   return [
-    el("div", { class: "track", "aria-hidden": "true" }, open, dot),
+    el("div", { class: "track", "aria-hidden": "true" }, dot),
     el("div", { class: "track-labels", "aria-hidden": "true" }, el("span", {}, "#1"), el("span", {}, `#${total}`)),
   ];
 }
@@ -191,16 +174,11 @@ function renderCallout(term, waitingHits, finalHits) {
     const [row, pos] = waitingHits[0];
     const ahead = pos - 1;
     const aheadText = ahead === 0 ? "Nobody is ahead of you." : `${ahead} project${ahead === 1 ? " is" : "s are"} ahead of you.`;
-    const open = pos <= OPEN_COUNT;
-    const toGo = pos - OPEN_COUNT;
     showCallout({
-      kind: open ? "open" : "locked",
       key: `${queue}:${row.id}`,
       title: `#${pos} of ${total} in the ${queue} queue`,
       lines: [
-        open
-          ? `You're in the top ${OPEN_COUNT}, so reviewers can open your project right now. Waiting ${waitText(row)}. ${aheadText}`
-          : `Locked for now: ${toGo} more project${toGo === 1 ? "" : "s"} need to be reviewed before you reach the top ${OPEN_COUNT} and reviewers can open it. Waiting ${waitText(row)}. ${aheadText}`,
+        `Waiting ${waitText(row)}. ${aheadText}`,
         deltaEl(rememberPosition(row.id, pos), pos),
       ],
       action: actions(row.id),
@@ -282,9 +260,8 @@ function render(animate = false) {
   countTo($("c-software"), data.queues.software.waiting.length);
   countTo($("c-hardware"), data.queues.hardware.waiting.length);
 
-  renderLeaders(animate);
-  const waitingHits = fillList($("waiting"), q.waiting, term, "Nothing waiting. Queue's clear.", true, animate);
-  const finalHits = fillList($("final"), q.final_checks, term, "Nothing in final checks.", false, animate);
+  const waitingHits = fillList($("waiting"), q.waiting, term, "Nothing waiting. Queue's clear.", animate);
+  const finalHits = fillList($("final"), q.final_checks, term, "Nothing in final checks.", animate);
   renderCallout(term, term ? waitingHits : [], term ? finalHits : []);
 }
 
