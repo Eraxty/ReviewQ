@@ -214,7 +214,7 @@ class DetailsTest(unittest.TestCase):
         export.main(out)
         self.assertTrue((out / "queue.json").exists())
         self.assertFalse((out / "p").exists())
-        self.assertFalse((out / "review.html").exists())
+        self.assertNotIn("review.js", (out / "review.html").read_text())
 
 if __name__ == "__main__":
     unittest.main()

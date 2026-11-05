@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="robots" content="noindex">
+  <title>PIXL QUEUE</title>
+  <!-- Review pages are gone. Old links land on the project in the queue. -->
+  <script>
+    const id = new URLSearchParams(location.search).get("id");
+    location.replace(id ? `./?q=%23${encodeURIComponent(id)}` : "./");
+  </script>
+</head>
+<body>
+  <p>Review pages were removed. <a href="./">Go to the queue</a>.</p>
+</body>
+</html>
