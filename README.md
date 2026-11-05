@@ -9,23 +9,6 @@ that cutoff is and tells makers how many spots they still need to move up.
 
 Live at **https://eraxty.github.io/ReviewQ/**
 
-Every project in the queue also has a review page (`review.html?id=618`), a
-copy of Pixl's review dash built from its open source code
-(`apps/internal-dashboard`, MIT): the same look, the README, a commit table
-with the time between commits, AI-commit flags and diffs you can open, the
-journals, past review notes, the maker's level and earlier projects, a live
-payout preview, and the same review form (hours to credit, tier, technical
-features, why lower the hours, additional notes, note to the player with the
-`/ai`, `/badreadme`... macros) with the verdict buttons at the bottom. Drafts
-autosave in the browser and every field has a copy button.
-
-Posting a review needs a GitHub sign-in, so every review shows who wrote it,
-and signed-in visitors' GitHub requests (README, commits, diffs) run on their
-own 5,000-an-hour limit instead of the shared 60. Real reviewers can copy what
-checks out into the dash and double check it there. Community reviews are
-unofficial. The queue page tags projects that have been unofficially reviewed
-and has a leaderboard of the top community reviewers, all time and this week.
-
 ## How it's hosted
 
 GitHub Pages only serves static files, and Pixl's API rejects browser
@@ -86,60 +69,15 @@ so that verdict time is used as a lower bound and the wait shows as e.g.
 `46d+`. Software and hardware (`project_type` hardware or cad) are separate
 queues, like on the dash.
 
-## Community reviews (`reviews-api/`)
+## Community reviews (retired)
 
-Pages can't store anything, so posted reviews go through a small API on
-Vercel (`reviews-api/`, Node, no framework) that keeps them in one private
-Vercel Blob document. Writes are conditional on the document's ETag, so two
-people posting at once can't overwrite each other.
-
-| Endpoint | What it does |
-|---|---|
-| `GET /api/reviews?project=618` | The project's reviews, newest first (cached 5 s at the edge) |
-| `POST /api/reviews {project, token, review}` | Post or edit your review |
-| `DELETE /api/reviews {project, token}` | Delete your review |
-| `GET /api/counts` | Reviews per project, for the queue page's tags |
-| `GET /api/leaderboard` | Top 25 reviewers, all time and this week |
-| `GET /api/auth/login?return=<page>` | Starts GitHub sign-in |
-| `GET /api/auth/callback` | GitHub sends people back here |
-| `POST /api/admin {admin, action, project, author}` | `check`, `delete` someone's review, or `ban` their key |
-
-Sign-in is a GitHub OAuth app asking for no scopes, so the token can only
-read public data. The API swaps the code for a token with the app's secret and
-sends the token back to the review page in the URL fragment; the page keeps it
-in localStorage. Posting sends the token, the API asks GitHub whose it is, and
-the review is stored under that GitHub user id with their login, name and
-avatar, one review per person per project. Nobody can review a project whose
-repo they own. The server only accepts reviews for projects that are in the
-queue right now (`p/<id>.json` on the site), takes the claimed hours from
-Pixl's data rather than the browser, checks the same things the dash's form
-does, and limits each address to 30 writes per 10 minutes.
-
-Moderation: open any review page once as `review.html?id=<id>#admin=<key>`.
-The key stays in that browser (it's removed from the address bar) and adds
-Delete and Ban author buttons to every review. A ban is by GitHub user id. Only the key's SHA-256 is in
-the code (`reviews-api/lib/http.js`), or set `ADMIN_KEY_SHA256` on Vercel to
-use a different key.
-
-It runs as the `reviewq-api` Vercel project at
-https://reviewq-api-eraxty.vercel.app, with a private Blob store
-(`BLOB_READ_WRITE_TOKEN`), the GitHub OAuth app's `GITHUB_CLIENT_ID` and
-`GITHUB_CLIENT_SECRET` (callback `https://reviewq-api-eraxty.vercel.app/api/auth/callback`),
-and Vercel Authentication turned off so browsers can reach it. To redeploy, deploy the `reviews-api` folder to that project.
-The site finds the API through `site/reviews-config.json`; without an `api`
-there, review pages still work for drafting and copying and say posting
-isn't connected.
-
-Running it locally against a JSON file:
-
-```bash
-cd reviews-api && npm install
-REVIEWS_FILE=reviews.local.json SITE_URL=http://localhost:5000 node dev.js   # http://localhost:8787
-```
+The site used to have a review page per project, a copy of Pixl's review dash
+where anyone could post an unofficial review after signing in with GitHub, and
+a leaderboard of community reviewers. That's gone: the site only shows the
+queue now. The old API code is still in `reviews-api/`, but nothing links to it.
 
 ## Tests
 
 ```bash
 .venv/bin/python -m unittest test_queue_rules
-cd reviews-api && npm test
 ```

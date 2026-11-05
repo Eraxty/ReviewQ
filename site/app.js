@@ -16,79 +16,7 @@ import {
 } from "./shared.js";
 
 let data = null;
-// Community review counts straight from the reviews API, so a new review
-// shows up here within a minute instead of at the next queue rebuild.
-let reviewsApi;
-let reviewCounts = null;
-let leaders = null;
-let board = "all";
-let leadersOpen = false;
-
-async function refreshReviewCounts() {
-  if (reviewsApi === undefined) reviewsApi = (await fetchJSON("reviews-config.json"))?.api?.replace(/\/$/, "") || null;
-  if (!reviewsApi) return;
-  const [counts, ranking] = await Promise.all([fetchJSON(`${reviewsApi}/api/counts`), fetchJSON(`${reviewsApi}/api/leaderboard`)]);
-  if (counts?.counts) reviewCounts = counts.counts;
-  if (ranking?.all) leaders = ranking;
-}
-
-function leaderEl(p, i) {
-  const count = board === "week" ? p.week : p.reviews;
-  const avatar = /^https:\/\//.test(p.avatar || "")
-    ? el("img", { class: "thumb leader-avatar", src: p.avatar, alt: "", loading: "lazy" })
-    : el("div", { class: "thumb leader-avatar" });
-  const li = el(
-    "li",
-    { class: `item leader${i < 3 ? ` top${i + 1}` : ""}` },
-    el("span", { class: "pos" }, String(i + 1)),
-    avatar,
-    el(
-      "div",
-      { class: "info" },
-      el("a", { class: "title", href: `https://github.com/${encodeURIComponent(p.login)}`, target: "_blank", rel: "noopener" }, p.name || p.login),
-      el(
-        "div",
-        { class: "meta" },
-        el("span", {}, `@${p.login}`),
-        p.approved ? el("span", { class: "chip" }, `${p.approved} approved`) : null,
-        p.needs_changes ? el("span", { class: "chip" }, `${p.needs_changes} sent back`) : null,
-        p.ban ? el("span", { class: "chip" }, `${p.ban} rejected`) : null,
-      ),
-    ),
-    el("div", { class: "wait" }, el("b", {}, String(count)), el("small", {}, count === 1 ? "review" : "reviews")),
-  );
-  li.style.setProperty("--i", i);
-  return li;
-}
-
-function renderLeaders(animate = false) {
-  const card = $("leaders-card");
-  card.hidden = !reviewsApi;
-  if (!reviewsApi) return;
-  card.querySelectorAll(".tabs button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.board === board)));
-  const list = leaders?.[board] || [];
-  const shown = leadersOpen ? list : list.slice(0, 5);
-  const box = $("leaders");
-  box.classList.remove("enter");
-  box.replaceChildren(
-    ...(shown.length
-      ? shown.map(leaderEl)
-      : [el("li", { class: "empty" }, leaders ? (board === "week" ? "No reviews this week yet. Be the first." : "Nobody yet. Be the first.") : "Loading...")]),
-  );
-  if (animate) box.classList.add("enter");
-  const more = $("leaders-more");
-  more.hidden = list.length <= 5;
-  more.textContent = leadersOpen ? "Show the top 5" : `Show the top ${list.length}`;
-}
-
-function applyReviewCounts() {
-  if (!data || !reviewCounts) return;
-  for (const q of Object.values(data.queues))
-    for (const row of [...q.waiting, ...q.final_checks]) row.community_reviews = reviewCounts[row.id] || 0;
-}
 let queue = new URLSearchParams(location.search).get("queue") === "hardware" ? "hardware" : "software";
-
-const reviewUrl = (id) => `review.html?id=${encodeURIComponent(id)}`;
 
 // `pos` is the queue position, or null for lists without an order that matters.
 function itemEl(row, pos, { hit = false, gated = false } = {}) {
@@ -104,18 +32,6 @@ function itemEl(row, pos, { hit = false, gated = false } = {}) {
     el("span", { class: "chip" }, TYPES[row.project_type] || row.project_type || "-"),
     row.wait_exact ? null : el("span", { class: "chip resub", title: "Shipped again after \"needs changes\" or after being unshipped" }, "Resubmitted"),
     row.is_peak ? el("span", { class: "chip peak" }, "Beacon pick") : null,
-    row.community_reviews
-      ? el(
-          "a",
-          {
-            class: "chip reviewed",
-            href: reviewUrl(row.id),
-            title: `${row.community_reviews} community review${row.community_reviews === 1 ? "" : "s"} on its review page. Not official: only Pixl's reviewers can approve a project.`,
-          },
-          svgIcon(ICONS.chat),
-          `Unofficially reviewed${row.community_reviews > 1 ? ` \u00d7${row.community_reviews}` : ""}`,
-        )
-      : null,
     el("span", {}, row.owner_name ? `@${row.owner_name}` : ""),
   );
   const wait = el(
@@ -134,7 +50,7 @@ function itemEl(row, pos, { hit = false, gated = false } = {}) {
     el(
       "div",
       { class: "info" },
-      el("a", { class: "title", href: reviewUrl(row.id) }, row.name),
+      el("span", { class: "title" }, row.name),
       meta,
     ),
     wait,
@@ -245,7 +161,6 @@ function actions(id) {
   return el(
     "div",
     { class: "callout-actions" },
-    el("a", { class: "btn copy", href: reviewUrl(id) }, "Review page"),
     copyButton("Copy link", link),
   );
 }
@@ -287,9 +202,6 @@ function renderCallout(term, waitingHits, finalHits) {
           ? `You're in the top ${OPEN_COUNT}, so reviewers can open your project right now. Waiting ${waitText(row)}. ${aheadText}`
           : `Locked for now: ${toGo} more project${toGo === 1 ? "" : "s"} need to be reviewed before you reach the top ${OPEN_COUNT} and reviewers can open it. Waiting ${waitText(row)}. ${aheadText}`,
         deltaEl(rememberPosition(row.id, pos), pos),
-        row.community_reviews
-          ? `It has ${row.community_reviews} unofficial community review${row.community_reviews === 1 ? "" : "s"}. They don't count until a Pixl reviewer checks it.`
-          : null,
       ],
       action: actions(row.id),
       extra: (fresh) => trackEls(pos, total, fresh),
@@ -386,9 +298,8 @@ function minutesAgo(iso) {
 async function refresh() {
   const first = data === null;
   try {
-    const [res] = await Promise.all([fetch("queue.json", { cache: "no-store" }), refreshReviewCounts()]);
+    const res = await fetch("queue.json", { cache: "no-store" });
     data = await res.json();
-    applyReviewCounts();
     const mins = minutesAgo(data.generated_at);
     const stale = mins > STALE_MINUTES;
     if (data.crawling) {
@@ -425,16 +336,6 @@ document.addEventListener("DOMContentLoaded", () => {
       render(true);
     }),
   );
-  document.querySelectorAll(".tabs button[data-board]").forEach((b) =>
-    b.addEventListener("click", () => {
-      board = b.dataset.board;
-      renderLeaders(true);
-    }),
-  );
-  $("leaders-more").addEventListener("click", () => {
-    leadersOpen = !leadersOpen;
-    renderLeaders(leadersOpen);
-  });
   $("search").addEventListener("input", () => render(false));
   $("search").addEventListener("keydown", (e) => {
     if (e.key === "Escape") {

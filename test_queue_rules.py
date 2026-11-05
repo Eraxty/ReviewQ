@@ -207,17 +207,14 @@ class DetailsTest(unittest.TestCase):
         self.assertEqual(page["maker"]["approved"][0]["name"], "Old")
         self.assertNotIn("skin", page["maker"])
 
-    def test_export_writes_a_file_per_queued_project(self):
+    def test_export_writes_only_the_queue(self):
         with crawler.connect() as conn:
             crawler.save_project(conn, api_project(618, "shipped"))
-            crawler.save_project(conn, api_project(700, "second_review"))
-            crawler.save_project(conn, api_project(701, "draft"))
         out = Path(self.tmp.name) / "site"
         export.main(out)
-        self.assertEqual(sorted(f.name for f in (out / "p").iterdir()), ["618.json", "700.json"])
-        self.assertEqual(json.loads((out / "p" / "618.json").read_text())["project"]["id"], "618")
-        self.assertTrue((out / "review.html").exists())
-
+        self.assertTrue((out / "queue.json").exists())
+        self.assertFalse((out / "p").exists())
+        self.assertFalse((out / "review.html").exists())
 
 if __name__ == "__main__":
     unittest.main()

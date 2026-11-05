@@ -82,19 +82,6 @@
         <div class="callout" id="callout" aria-live="polite" hidden></div>
       </section>
 
-      <section class="card" id="leaders-card" hidden>
-        <div class="card-head">
-          <h2 class="card-title">Top reviewers</h2>
-          <div class="tabs" role="tablist" aria-label="Leaderboard">
-            <button type="button" class="btn" role="tab" data-board="all" aria-selected="true">All time</button>
-            <button type="button" class="btn" role="tab" data-board="week" aria-selected="false">This week</button>
-          </div>
-        </div>
-        <p class="note plain">Community reviewers ranked by how many queued projects they've reviewed. Open any project, write a review and sign in with GitHub to get on the board.</p>
-        <ol class="list leaders" id="leaders"></ol>
-        <button type="button" class="btn copy leaders-more" id="leaders-more" hidden>Show the top 25</button>
-      </section>
-
       <section class="card">
         <div class="card-head">
           <h2 class="card-title">Waiting for review</h2>
@@ -121,17 +108,12 @@
         <p>
           Waiting time counts from the first ship, like the review dash. When a project is shipped again (after "needs
           changes", or after the maker unshipped it), only the latest ship date is public. The wait then counts from the
-          earliest ship this site has seen, or from the first "needs changes", and is marked with a +. Its real wait can
+          earliest ship this site has seen, or is estimated from its review history and journals, and is marked with a +. Its real wait can
           be a bit longer, so it may sit a little higher in the real queue.
         </p>
         <p>
           The top-15 line is approximate: projects reserved for or claimed by a reviewer don't use up a slot, and Pixl
           owners and reviewers with full queue access can open any project.
-        </p>
-        <p>
-          Click a project to open its review page, a copy of Pixl's review dash with everything public about it
-          (README, commits, journals, past reviews) and community reviews anyone can post after signing in with
-          GitHub. Community reviews are unofficial; only Pixl's reviewers can approve a project.
         </p>
         <p>Data comes from Pixl's public API. Unofficial, not made by or affiliated with Hack Club.</p>
         <p class="credits">
