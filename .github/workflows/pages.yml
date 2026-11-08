@@ -55,6 +55,7 @@ jobs:
         run: python crawler.py --budget 420
 
       - name: Save crawl state
+        id: state
         run: |
           blob=$(git hash-object -w data/pixl.db)
           tree=$(printf '100644 blob %s\tpixl.db\n' "$blob" | git mktree)
@@ -63,6 +64,7 @@ jobs:
             commit-tree "$tree" -m "Crawl state")
           # One commit, force-pushed, so the branch never grows.
           git push --force origin "$commit:refs/heads/state"
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
 
       - name: Build site
         run: python export.py _site
@@ -75,9 +77,14 @@ jobs:
 
       # GitHub sometimes answers the deploy with a 502; one retry after a
       # short wait gets past it, and the next scheduled run covers the rest.
+      # deploy-pages tags the build with GITHUB_SHA, and Pages quietly keeps
+      # the live site when that version repeats, so every run between pushes
+      # was a no-op. The state commit is new each run, so use that instead.
       - id: deploy
         uses: actions/deploy-pages@v5
         continue-on-error: true
+        env:
+          GITHUB_SHA: ${{ steps.state.outputs.commit }}
 
       - name: Wait before retrying the deploy
         if: steps.deploy.outcome == 'failure'
@@ -86,6 +93,8 @@ jobs:
       - id: deploy-retry
         if: steps.deploy.outcome == 'failure'
         uses: actions/deploy-pages@v5
+        env:
+          GITHUB_SHA: ${{ steps.state.outputs.commit }}
 
   # A separate job so the Pages deploy above is finished and closed before
   # this waits. Runs even when the update failed, so one bad crawl doesn't
